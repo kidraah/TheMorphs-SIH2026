@@ -224,3 +224,79 @@ def compute_channel_stats(loader, event_ids: Sequence[str], n_sample: int = 200,
     mean = sums / np.maximum(counts, 1)
     var = np.maximum(sqs / np.maximum(counts, 1) - mean ** 2, 1e-12)
     return ChannelStats(mean.tolist(), np.sqrt(var).tolist())
+
+
+class CachedSEVIRDataset(SEVIRDataset):
+    """Same contract as SEVIRDataset, reading the pre-decoded cache.
+
+    The raw path re-decoded ~14 MB of HDF5 per sample every epoch, which cost
+    ~70% of each training step. This reads ~500 KB already decoded, already
+    resampled, already time-subsampled.
+
+    Subclassing keeps ONE implementation of the windowing, NaN policy and
+    target construction. If those diverged between a "fast" and a "slow"
+    path, the cache would quietly train a different model than the raw
+    loader validates.
+    """
+
+    def __init__(self, cache, event_ids, config=None, context_frames=2,
+                 horizon_frames=6):
+        self.cache = cache
+        self.ids = list(event_ids)
+        self.cfg = config or DatasetConfig()
+        self.context_frames = context_frames
+        self.horizon_frames = horizon_frames
+        self.grid = cache.cfg.grid_size
+        self._loader_target_sensor_km = cache.cfg.label_km
+
+    def __len__(self):
+        return len(self.ids)
+
+    def _targets(self, y, rng):
+        # The cache is already at label_km, so the consistency check in the
+        # parent (which compares against the loader's ChannelSpec) does not
+        # apply -- but the same guard is kept, against the cache manifest.
+        t = self.cfg.targets
+        if self.cache.cfg.label_km != t.label_km:
+            raise ValueError(
+                f"cache was built at {self.cache.cfg.label_km} km labels but "
+                f"TargetConfig asks for {t.label_km} km. Rebuild the cache or "
+                f"fix the config -- they must agree.")
+        valid = np.isfinite(y)
+        yf = np.where(valid, y, 0.0)
+        targets = {"rain_rate": (yf > t.rain_kgm2).astype(np.float32),
+                   "extreme_rain": (yf > t.extreme_kgm2).astype(np.float32)}
+        masks = {k: valid.astype(np.float32) for k in targets}
+        h, w = yf.shape[-2:]
+        xs = rng.integers(0, w, t.n_pseudo_stations)
+        ys = rng.integers(0, h, t.n_pseudo_stations)
+        coords = np.stack([(2 * xs + 1) / w - 1, (2 * ys + 1) / h - 1], axis=-1)
+        targets["cloudburst"] = (yf[:, ys, xs] > t.extreme_kgm2).astype(np.float32)
+        masks["cloudburst"] = valid[:, ys, xs].astype(np.float32)
+        return targets, masks, coords.astype(np.float32)
+
+    def __getitem__(self, i):
+        eid = self.ids[i]
+        rng = np.random.default_rng(self.cfg.seed + i)
+        xa, ya = self.cache.load(eid)                 # (C,T,H,W), (T,H,W)
+
+        c, h = self.context_frames, self.horizon_frames
+        if xa.shape[1] < c + h:
+            raise ValueError(f"{eid}: cache has {xa.shape[1]} frames, need {c + h}")
+        x_win, y_win = xa[:, :c], ya[c:c + h]
+
+        x, valid = self._prepare_inputs(x_win)
+        if self.cfg.nan_policy is NaNPolicy.MASK and self.cfg.add_validity_channel:
+            x = np.concatenate([x, valid.astype(np.float32)], axis=0)
+        targets, masks, coords = self._targets(y_win, rng)
+        return (torch.from_numpy(np.ascontiguousarray(x, dtype=np.float32)),
+                {k: torch.from_numpy(v) for k, v in targets.items()},
+                {k: torch.from_numpy(v) for k, v in masks.items()},
+                torch.from_numpy(coords), eid)
+
+    @property
+    def in_channels(self) -> int:
+        n = len(self.cache.cfg.input_channels)
+        if self.cfg.nan_policy is NaNPolicy.MASK and self.cfg.add_validity_channel:
+            n *= 2
+        return n
