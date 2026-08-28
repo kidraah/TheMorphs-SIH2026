@@ -228,13 +228,13 @@ def test_event_missing_a_channel_is_dropped_not_zero_filled(store, tmp_path):
 
 def test_vil_decode_matches_the_published_formula():
     """SEVIR NeurIPS-2020 supplemental, eq. 2. Hand-evaluated at each branch."""
-    x = np.array([0, 5, 6, 18, 19, 255], dtype=np.uint8)
+    x = np.array([0, 5, 6, 18, 19, 254], dtype=np.uint8)
     got = decode_vil(x)
     assert got[0] == 0.0 and got[1] == 0.0                      # X <= 5
     assert got[2] == pytest.approx((6 - 2) / 90.66)             # linear branch
     assert got[3] == pytest.approx((18 - 2) / 90.66)            # branch edge
     assert got[4] == pytest.approx(np.exp((19 - 83.9) / 38.9))  # exp branch
-    assert got[5] == pytest.approx(np.exp((255 - 83.9) / 38.9))
+    assert got[5] == pytest.approx(np.exp((254 - 83.9) / 38.9)) # true maximum
 
 
 def test_vil_decode_is_continuous_at_the_branch_boundary():
@@ -255,10 +255,37 @@ def test_vil_decode_is_continuous_at_the_branch_boundary():
 
 
 def test_vil_decode_spans_physical_range():
-    full = decode_vil(np.arange(256, dtype=np.uint8))
+    full = decode_vil(np.arange(255, dtype=np.uint8))     # 255 is the fill value
     assert full.min() == 0.0
     assert 50 < full.max() < 120, f"kg/m^2 top end implausible: {full.max()}"
     assert np.all(np.diff(full) >= 0), "decode must be monotonic"
+
+
+def test_vil_byte_255_is_missing_not_the_maximum():
+    """The worst possible sentinel to leave undecoded.
+
+    Verified against the real store: no vil catalog row has data_max == 255
+    (the max across all 20,393 rows is 254), and each row's pct_missing
+    equals its byte-255 fraction exactly. Decoded naively it becomes
+    81.33 kg/m^2 -- the top of the entire range -- so a fully-missing event
+    would be a uniform field of maximum-intensity storm, labelled extreme
+    rain everywhere.
+    """
+    assert np.isnan(decode_vil(np.array([255], dtype=np.uint8))[0])
+    assert decode_vil(np.array([254], dtype=np.uint8))[0] == pytest.approx(79.261, abs=1e-3)
+
+    allmissing = np.full((4, 4), 255, dtype=np.uint8)
+    assert np.isnan(decode_vil(allmissing)).all()
+
+
+def test_pct_missing_is_a_fraction_not_a_percentage():
+    """The catalog stores pct_missing in [0, 1]. A threshold of 5.0 looks
+    like '5 percent' and silently admits every event, including the
+    100%-missing ones -- the filter becomes inert."""
+    with pytest.raises(ValueError, match="FRACTION"):
+        SEVIRConfig(data_root="/tmp", catalog="/tmp/c.csv", max_pct_missing=5.0)
+    cfg = SEVIRConfig(data_root="/tmp", catalog="/tmp/c.csv")
+    assert cfg.max_pct_missing <= 1.0
 
 
 def test_missing_sentinel_becomes_nan_not_minus_327_degrees():

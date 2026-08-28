@@ -136,18 +136,19 @@ class MultiHazardResult:
     def summary_table(self) -> str:
         lines = ["=" * 78, "MULTI-HAZARD SCORECARD", "=" * 78, ""]
         hdr = (f"{'hazard':>14} {'base rate':>11} {'events':>9} "
-               f"{'SEDI':>16} {'CSI':>7} {'POD':>7} {'FAR':>7} {'BSS':>8}")
+               f"{'SEDI [95% CI]':>24} {'CSI':>7} {'POD':>7} {'FAR':>7} {'BSS':>8}")
         lines += [hdr, "-" * len(hdr)]
         for name, r in self.hazards.items():
             h = r.pooled["headline"]
             events = h["hits"] + h["misses"]
             ci = r.pooled.get("ci")
             if ci and np.isfinite(ci["lo"].get("sedi", np.nan)):
-                sedi = f"{h['sedi']:.3f}[{ci['lo']['sedi']:.2f},{ci['hi']['sedi']:.2f}]"
+                sedi = (f"{h['sedi']:.3f} "
+                        f"[{ci['lo']['sedi']:+.3f},{ci['hi']['sedi']:+.3f}]")
             else:
                 sedi = f"{h['sedi']:.3f}"
             lines.append(f"{name:>14} {r.pooled['base_rate']:>11.2e} {events:>9d} "
-                         f"{sedi:>16} "
+                         f"{sedi:>24} "
                          f"{h['csi']:>7.3f} {h['pod']:>7.3f} {h['far']:>7.3f} "
                          f"{r.pooled['probabilistic']['bss']:>8.3f}")
 

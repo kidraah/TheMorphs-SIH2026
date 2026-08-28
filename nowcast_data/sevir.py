@@ -47,6 +47,15 @@ from .grid import match_sensor_resolution, subsample_time
 # before any statistic touches it.
 INT16_MISSING = -32768
 
+# VIL's missing marker. Verified against the real 229 GB store: no vil
+# catalog row anywhere has data_max == 255 (the maximum across all 20,393
+# rows is 254), and each row's `pct_missing` equals its byte-255 fraction
+# exactly. So 255 is purely a fill value -- and it is the WORST possible one
+# to leave undecoded, because decode_vil(255) = 81.33 kg/m^2, the top of the
+# entire range. A fully-missing event would become a uniform field of
+# maximum-intensity storm and be labelled extreme rain everywhere.
+VIL_MISSING = 255
+
 SEVIR_CADENCE_MIN = 5.0
 SEVIR_FRAMES = 49          # 4 hours at 5 min, inclusive
 SEVIR_DOMAIN_KM = 384.0
@@ -83,13 +92,17 @@ def decode_vil(raw: np.ndarray) -> np.ndarray:
     linear branch gives 0.1765 there, and only the first reading matches
     (0.1838); the second gives 6e-31. `test_vil_decode_is_continuous`
     pins this so the ambiguity cannot silently resolve the wrong way later.
+
+    Byte 255 is the missing marker, not a value, and becomes NaN. See
+    VIL_MISSING above for why that one matters more than the usual sentinel.
     """
     x = raw.astype(np.float64)
     out = np.zeros_like(x)
     lin = (x > 5) & (x <= 18)
-    exp = x > 18
+    exp = (x > 18) & (x != VIL_MISSING)
     out[lin] = (x[lin] - 2.0) / 90.66
     out[exp] = np.exp((x[exp] - 83.9) / 38.9)
+    out[x == VIL_MISSING] = np.nan
     return out
 
 
@@ -139,7 +152,18 @@ DEFAULT_CHANNELS: dict[str, ChannelSpec] = {
 #     gauge product at ~25 km) is far coarser. If labels come in at 25 km, a
 #     20-30 km^2 cloudburst is below one label pixel, and label resolution --
 #     not input resolution -- becomes the binding constraint on "hyper-local".
-VIL_CHANNEL = ChannelSpec("vil", native_km=1.0, sensor_km=4.0,
+# sensor_km=12 is the LABEL resolution, matched to Indian IMERG (0.1deg ~
+# 11 km), not to SEVIR's native 1 km radar. Same argument as the input-side
+# treatment of water vapour: pretraining a decoder on structure the
+# fine-tuning target physically cannot contain teaches it detail it will then
+# have to unlearn. Measured on the real store, coarsening 1 -> 12 km retains
+# 98.7% of the >5 kg/m^2 population, 87% of >10, 75% of >20 and 46% of >40,
+# and lowers the 99.9th percentile by 19% -- self-consistent for a
+# percentile-defined head.
+#
+# 12 and not 10: 384/12 = 32 exactly and 12/4 = 3, so the arithmetic stays
+# integral onto the 96-cell analysis grid. 10 divides neither.
+VIL_CHANNEL = ChannelSpec("vil", native_km=1.0, sensor_km=12.0,
                           encoding="vil", missing=None, verified=True)
 
 
@@ -155,11 +179,20 @@ class SEVIRConfig:
     cadence_min: float = 30.0       # INSAT-3D full disk
     context_frames: int = 2         # 1 h of history at 30 min
     horizon_frames: int = 6         # 3 h ahead -- SEVIR's ceiling, see module docs
-    max_pct_missing: float = 5.0
+    # FRACTION in [0, 1], not a percentage. The catalog stores it that way
+    # (max observed 1.000 == entirely missing), so a threshold of 5.0 --
+    # which looks like "5 percent" -- silently admits every event including
+    # the fully-missing ones. Validated below so that mistake cannot recur.
+    max_pct_missing: float = 0.05
 
     def __post_init__(self):
         self.data_root = Path(self.data_root)
         self.catalog = Path(self.catalog)
+        if not 0.0 <= self.max_pct_missing <= 1.0:
+            raise ValueError(
+                f"max_pct_missing is a FRACTION in [0, 1], got "
+                f"{self.max_pct_missing}. A value like 5.0 reads as '5 percent' "
+                f"but admits every event, including 100%-missing ones.")
         need = (self.context_frames + self.horizon_frames) * (
             self.cadence_min / SEVIR_CADENCE_MIN)
         if need > SEVIR_FRAMES:
@@ -205,7 +238,7 @@ class SEVIRCatalog:
 
     REQUIRED = ("id", "file_name", "file_index", "img_type")
 
-    def __init__(self, path: Path, max_pct_missing: float = 5.0):
+    def __init__(self, path: Path, max_pct_missing: float = 0.05):
         import pandas as pd
         self.path = Path(path)
         df = pd.read_csv(self.path, low_memory=False)

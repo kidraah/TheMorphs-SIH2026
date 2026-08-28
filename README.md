@@ -218,6 +218,51 @@ Losses are focal with `pos_weight`, because at a 1e-4 base rate plain BCE
 finds "predict no everywhere" almost immediately and sits there with an
 excellent-looking curve.
 
+## Training: `nowcast_train`
+
+```bash
+.venv/bin/python scripts/train_sevir.py --smoke    # wiring check, minutes
+.venv/bin/python scripts/train_sevir.py            # full pretraining run
+```
+
+**Splitting is by contiguous calendar block, not shuffled days.** Shuffling
+events puts windows from one storm on both sides; shuffling days still leaves
+consecutive days sharing a synoptic setup. So: earliest 70% train, next 15%
+val, last 15% test, with a 7-day buffer discarded either side of each
+boundary — which also matches how the model is used, trained on the past and
+run on the future.
+
+Every split reports three sample sizes, and they differ by orders of
+magnitude:
+
+```
+  split   events   days  episodes  overstate
+  train    8,174    363        50       163x
+    val    1,339     65        16        84x
+   test    2,065     75         9       229x
+```
+
+**The episode column is what the error bars rest on.** Nine independent
+episodes in test, against 2,065 events. Both val and test sit below the ~20
+episodes where the bootstrap itself becomes reliable, and the split report
+says so rather than letting a test CSI be quoted as though it had 2,065
+independent samples.
+
+**NaN policy is an explicit flag**, because 7% of real pixels are missing and
+something happens to them either way. `MASK` (default) fills with zero,
+appends a validity channel so the network can tell *missing* from *average*,
+and excludes missing cells from the loss. `FILL_ZERO` and `FILL_MEAN` do not.
+
+**Checkpoints are resumable and atomic.** Model, optimizer (Adam moments and
+step count), scheduler, epoch, best score and RNG state — written to a temp
+file and renamed, so a spot reclaim mid-write cannot leave a truncated file
+that fails to load later. A `last.pt` is written every epoch; rerunning the
+same `--run-dir` continues from it.
+
+Checkpoint selection is `worst_head_lower_bound("sedi")` with the bootstrap
+blocked on storm episode. If any head is unmeasurable the run **blocks**
+saving `best` rather than selecting on the heads that happen to have data.
+
 ## The judgment calls
 
 The formulas are exact. The numbers are dominated by the choices *around*
@@ -237,7 +282,7 @@ in every result — rather than buried in the code:
 
 ## Validation
 
-`tests/` (140 tests) proves the ruler is straight by known-answer testing,
+`tests/` (163 tests) proves the ruler is straight by known-answer testing,
 not by eyeballing plausibility:
 
 - perfect forecast → POD 1, FAR 0, CSI 1, Brier 0 **exactly**
