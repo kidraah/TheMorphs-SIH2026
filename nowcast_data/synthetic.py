@@ -41,11 +41,16 @@ def build_store(root: Path, n_events: int = 6, n_days: int = 2,
     root = Path(root)
     (root / "data").mkdir(parents=True, exist_ok=True)
     rng = np.random.default_rng(seed)
+    # Mirror the real distribution's layout: files nested under
+    # data/<img_type>/<year>/, and `file_name` relative to data/, not to the
+    # store root. The synthetic store previously used a flat data/ directory,
+    # which would have hidden a path-convention bug until first contact with
+    # the real 229 GB download.
 
     rows = []
     for img_type in img_types:
         size = SIZES[img_type]
-        fname = f"data/SEVIR_{img_type.upper()}_TEST.h5"
+        fname = f"{img_type}/2019/SEVIR_{img_type.upper()}_TEST_2019.h5"
         arr = np.zeros((n_events, size, size, SEVIR_FRAMES), dtype=np.float32)
         for i in range(n_events):
             arr[i] = _storm(size, SEVIR_FRAMES, rng, drift=size / 400.0)
@@ -60,7 +65,8 @@ def build_store(root: Path, n_events: int = 6, n_days: int = 2,
             raw = (arr / SCALES[img_type]).astype(np.int16)
             # a few missing pixels, as the real files carry them
             raw[0, :4, :4, 0] = -32768
-        with h5py.File(root / fname, "w") as fh:
+        (root / "data" / img_type / "2019").mkdir(parents=True, exist_ok=True)
+        with h5py.File(root / "data" / fname, "w") as fh:
             fh.create_dataset(img_type, data=raw)
             fh.create_dataset("id", data=np.array(
                 [f"E{i:03d}".encode() for i in range(n_events)]))

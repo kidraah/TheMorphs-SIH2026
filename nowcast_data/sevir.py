@@ -168,6 +168,19 @@ class SEVIRConfig:
                 f"only {SEVIR_FRAMES} (4 hours). Reduce horizon_frames: a 6-hour "
                 f"lead time cannot be pretrained on SEVIR.")
 
+    @classmethod
+    def from_store(cls, root, **kw) -> "SEVIRConfig":
+        """Point at a downloaded SEVIR store root.
+
+        In the real distribution CATALOG.csv sits at the root while
+        `file_name` values are relative to the `data/` directory beneath it
+        ('ir069/2018/SEVIR_IR069_...h5'). Getting that split wrong yields
+        FileNotFoundError on every event, so it is encoded here rather than
+        left to each caller.
+        """
+        root = Path(root)
+        return cls(data_root=root / "data", catalog=root / "CATALOG.csv", **kw)
+
     @property
     def grid_size(self) -> int:
         return int(round(SEVIR_DOMAIN_KM / self.target_km))

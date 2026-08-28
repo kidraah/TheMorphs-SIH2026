@@ -25,8 +25,7 @@ def store(tmp_path_factory):
 
 def _cfg(store, **kw):
     kw.setdefault("inputs", [DEFAULT_CHANNELS["ir107"], DEFAULT_CHANNELS["ir069"]])
-    return SEVIRConfig(data_root=store, catalog=store / "CATALOG.csv",
-                       target=VIL_CHANNEL, **kw)
+    return SEVIRConfig.from_store(store, target=VIL_CHANNEL, **kw)
 
 
 # --------------------------------------------------------------------------
@@ -308,8 +307,7 @@ def test_missing_catalog_columns_are_reported(tmp_path):
     pd.DataFrame({"id": ["a"], "wrong": [1]}).to_csv(tmp_path / "CATALOG.csv",
                                                      index=False)
     with pytest.raises(ValueError, match="missing columns"):
-        SEVIRLoader(SEVIRConfig(data_root=tmp_path,
-                                catalog=tmp_path / "CATALOG.csv"))
+        SEVIRLoader(SEVIRConfig.from_store(tmp_path))
 
 
 def test_requesting_too_many_frames_is_explicit(store):

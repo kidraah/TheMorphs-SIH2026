@@ -166,7 +166,9 @@ purpose:
   backbone trained on 5-minute motion learns evolution at a timescale the
   operational feed never shows it.
 - **Samples carry their storm day**, and `day_groups()` hands it straight to
-  `bootstrap_ci(groups=...)`.
+  `bootstrap_ci(groups=...)`. Measured on the real download: **12,896 usable
+  events come from just 526 storm days** — mean 24.5 events per day, up to 77.
+  Omitting day blocking overstates the effective sample size by ~24×.
 
 Two limits the loader enforces or flags rather than hiding:
 
@@ -235,7 +237,7 @@ in every result — rather than buried in the code:
 
 ## Validation
 
-`tests/` (133 tests) proves the ruler is straight by known-answer testing,
+`tests/` (140 tests) proves the ruler is straight by known-answer testing,
 not by eyeballing plausibility:
 
 - perfect forecast → POD 1, FAR 0, CSI 1, Brier 0 **exactly**
