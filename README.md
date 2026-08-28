@@ -4,7 +4,18 @@ A scoring harness for severe-weather nowcasts — thunderstorm, extreme rain,
 cloudburst, flash flood — at 30 min to 6 h lead times, plus the SEVIR data
 loader that feeds pretraining.
 
-> ### Two limits to know before reading further
+> ### Limits to know before reading further — full list in [docs/LIMITATIONS.md](docs/LIMITATIONS.md)
+>
+> **Product resolution is 12 km, set by label availability, not by the 4 km
+> inputs.** IMERG is 0.1° (~11 km), so gridded heads are supervised at ~12 km
+> and output maps are piecewise-constant in 3×3 blocks. Densification path is
+> IMD station data, which the point head already consumes.
+>
+> **No SEVIR number is a scientific result.** CONUS convection is
+> synoptically forced over flat terrain with no DEM analogue; the test split
+> has 9 independent storm episodes. SEVIR buys a debugged pipeline and a warm
+> start. Do not quote a SEVIR figure as a headline without this caveat.
+>
 >
 > **SEVIR pretraining reaches ~3 h, not 6 h.** A SEVIR event is 4 hours
 > long; spend 1 h on context and 3 h of targets remain. The far half of the
@@ -262,6 +273,46 @@ same `--run-dir` continues from it.
 Checkpoint selection is `worst_head_lower_bound("sedi")` with the bootstrap
 blocked on storm episode. If any head is unmeasurable the run **blocks**
 saving `best` rather than selecting on the heads that happen to have data.
+
+## Indian ingestion: `nowcast_data`
+
+The scientific claim rests on Indian data, so this is the critical path.
+
+```python
+from nowcast_data.insat import ingest_scan       # satpy insat3d_img_l1b_h5 -> 4 km grid
+from nowcast_data.imerg import ingest            # GPM IMERG 0.1deg -> same grid
+from nowcast_data.alignment import alignment_offset
+```
+
+**Common grid** (`grids.py`): 864 × 912 at 4 km, Lambert Azimuthal Equal
+Area centred on 23 °N 82 °E. Equal-area because the scores are area-based —
+on a plate carrée grid a "4 km" cell would mean something different in
+Kashmir than in Kerala, biasing every spatial metric by latitude. Divides
+evenly by 4 (model patch) and 12 (IMERG-matched labels).
+
+**Sanity checks run before anything else**, because a reader that has
+drifted from the current product format does not raise — it returns
+plausible arrays in the wrong units. TIR-1 must land in 190–320 K; water
+vapour must be narrower and colder (it is an absorption channel seeing only
+the upper troposphere — the same signature confirmed in SEVIR's `ir069`).
+A scan left in Celsius is caught.
+
+**IMERG has three specific traps**, all tested: it stores grids as
+(time, **lon**, lat) — longitude first, unlike almost everything else, so a
+missing transpose puts rain in the wrong place while still looking like
+weather; missing is `-9999.9`, not NaN; and V07 renamed
+`precipitationCal` → `precipitation`.
+
+**Alignment is a gate, not a diagnostic.** `alignment_offset` slides cold
+TIR against wet IMERG and reports the peak-agreement offset. A systematic
+shift is the worst bug in the pipeline because nothing downstream reports
+it: training proceeds, loss falls, and the model learns "rain appears 28 km
+east of the cold cloud top" — stable, learnable, and wrong, with every score
+looking healthy.
+
+Credentials come from a gitignored `.env` read through environment variables
+(`cp .env.example .env`). `nowcast_data.credentials.report()` shows what is
+set without ever printing a value.
 
 ## The judgment calls
 

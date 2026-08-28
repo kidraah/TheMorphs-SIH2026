@@ -42,6 +42,10 @@ class TrainConfig:
     loss_weights: dict = field(default_factory=dict)
     checkpoint_metric: str = "sedi"
     log_every: int = 20
+    # Free-text provenance stamped into every checkpoint. Used to record what
+    # the weights do NOT mean -- e.g. that a head was trained on pseudo-labels.
+    notes: str = ""
+    head_provenance: dict = field(default_factory=dict)
 
     def __post_init__(self):
         self.run_dir = Path(self.run_dir)
@@ -159,9 +163,11 @@ def train(model: MultiTaskNowcaster, train_ds, val_ds, config: TrainConfig,
             print(result.compare(previous, metric=cfg.checkpoint_metric))
 
         # Always save `last` so a reclaim loses at most one epoch.
+        stamp = {"train_loss": train_loss, "notes": cfg.notes,
+                 "head_provenance": cfg.head_provenance}
         save_checkpoint(cfg.run_dir / "last.pt", model=model, optimizer=opt,
                         scheduler=sched, epoch=epoch, best_score=best,
-                        config=cfg, extra={"train_loss": train_loss})
+                        config=cfg, extra=stamp)
 
         if score == -float("inf"):
             print(f"!!  checkpoint BLOCKED: head {name!r} is unmeasurable "
@@ -171,7 +177,7 @@ def train(model: MultiTaskNowcaster, train_ds, val_ds, config: TrainConfig,
             best = score
             save_checkpoint(cfg.run_dir / "best.pt", model=model, optimizer=opt,
                             scheduler=sched, epoch=epoch, best_score=best,
-                            config=cfg, extra={"worst_head": name})
+                            config=cfg, extra=stamp | {"worst_head": name})
             print(f"  new best: {name} {cfg.checkpoint_metric} lower bound "
                   f"{best:.4f} -> saved best.pt")
         else:

@@ -33,6 +33,7 @@ def main():
     ap.add_argument("--device", default="auto")
     ap.add_argument("--nan-policy", default="mask",
                     choices=[p.value for p in NaNPolicy])
+    ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--no-resume", action="store_true")
     ap.add_argument("--smoke", action="store_true",
                     help="tiny subset + tiny model, to prove the wiring")
@@ -72,10 +73,30 @@ def main():
     print(f"model: {model.n_parameters():,} params, "
           f"{tr.in_channels} input channels, heads {list(model.geometries)}")
 
+    # Provenance stamped into every checkpoint. The cloudburst head is
+    # trained on pseudo-stations sampled from the VIL grid: SEVIR has no gauge
+    # network, so those weights train the sampling and sparse-scoring MECHANISM
+    # and give a sensible initialisation. They carry NO real station
+    # relationship -- that can only come from IMD AWS/ARG data at fine-tune
+    # time. Anyone loading this checkpoint needs to know that.
+    provenance = {
+        "rain_rate": "SEVIR VIL > 1.0 kg/m^2, coarsened to 12 km",
+        "extreme_rain": "SEVIR VIL > 25.6 kg/m^2 (~99.9th pct at 12 km)",
+        "cloudburst": "MECHANISM ONLY -- pseudo-stations sampled from the VIL "
+                      "grid. No real station relationship. Re-supervise on IMD "
+                      "AWS/ARG data before any operational use.",
+    }
+    notes = ("SEVIR (CONUS) pretraining. Synoptically forced convection over "
+             "flat terrain, no orographic analogue and no DEM. Provides a "
+             "debugged pipeline and a warm start, NOT monsoon physics. No "
+             "scientific claim rests on SEVIR numbers.")
+
     from nowcast_train import train
     train(model, tr, va,
           TrainConfig(epochs=args.epochs, batch_size=args.batch_size, lr=args.lr,
                       run_dir=Path(args.run_dir), device=args.device,
+                      num_workers=args.workers,
+                      notes=notes, head_provenance=provenance,
                       n_boot=100 if args.smoke else 500),
           lead_minutes=loader.cfg.lead_minutes,
           val_groups=episode_ids(va_days),
