@@ -336,3 +336,66 @@ def test_persistence_is_perfect_on_a_frozen_sky():
     obs = np.repeat(frame[:, None], 4, axis=1)
     r = evaluate(persistence(frame, 4), obs)
     assert r.pooled["headline"]["csi"] == 1.0
+
+
+# --------------------------------------------------------------------------
+# Point geometry: station truth, not a grid
+# --------------------------------------------------------------------------
+
+def test_point_geometry_accepts_station_arrays():
+    """IMD AWS/ARG gauge truth is (N, L, S) at irregular locations."""
+    rng = np.random.default_rng(0)
+    obs = (rng.random((30, 6, 47)) < 0.02).astype(float)
+    pred = np.where(obs > 0, rng.uniform(0.3, 1.0, obs.shape),
+                    rng.uniform(0.0, 0.7, obs.shape))
+    r = evaluate(pred, obs, EvalConfig(geometry="point"),
+                 lead_minutes=[30, 60, 120, 240, 300, 360])
+    assert len(r.per_lead) == 6
+    assert r.pooled["headline"]["hits"] > 0
+
+
+def test_point_geometry_omits_fss_entirely():
+    """Station array order carries no distance information, so a
+    neighbourhood filter over it is meaningless and must not be reported."""
+    rng = np.random.default_rng(1)
+    obs = (rng.random((20, 3, 40)) < 0.05).astype(float)
+    r = evaluate(rng.random(obs.shape), obs, EvalConfig(geometry="point"))
+    assert r.pooled["fss"] == []
+    assert all(l.fss == [] for l in r.per_lead)
+    text = r.summary_table()
+    assert "FSS@" not in text
+    assert "not a spatial neighbourhood" in text
+
+
+def test_stations_cannot_be_smuggled_in_as_a_degenerate_grid():
+    """The dangerous case: (N, L, 1, S) previously ran silently and reported
+    an FSS that averaged over adjacent station INDICES."""
+    rng = np.random.default_rng(2)
+    obs = (rng.random((10, 2, 1, 40)) < 0.05).astype(float)
+    with pytest.raises(ValueError, match=r"expects \(N, L, S\)"):
+        evaluate(rng.random(obs.shape), obs, EvalConfig(geometry="point"))
+
+
+def test_grid_geometry_rejects_point_arrays_with_a_pointer():
+    rng = np.random.default_rng(3)
+    obs = (rng.random((10, 2, 40)) < 0.05).astype(float)
+    with pytest.raises(ValueError, match="geometry='point'"):
+        evaluate(rng.random(obs.shape), obs, EvalConfig())
+
+
+def test_invalid_geometry_is_rejected():
+    with pytest.raises(ValueError, match="geometry must be"):
+        EvalConfig(geometry="stations")
+
+
+def test_point_geometry_works_through_the_bootstrap():
+    from nowcast_eval import attach_confidence_intervals
+    rng = np.random.default_rng(4)
+    obs = (rng.random((25, 3, 40)) < 0.04).astype(float)
+    pred = np.where(obs > 0, rng.uniform(0.3, 1.0, obs.shape),
+                    rng.uniform(0.0, 0.7, obs.shape))
+    cfg = EvalConfig(geometry="point")
+    r = evaluate(pred, obs, cfg, lead_minutes=[30, 60, 120])
+    attach_confidence_intervals(r, pred, obs, cfg, n_boot=100)
+    assert np.isfinite(r.pooled["ci"]["lo"]["csi"])
+    assert not any(k.startswith("fss@") for k in r.pooled["ci"]["point"])

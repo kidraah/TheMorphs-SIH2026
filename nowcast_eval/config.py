@@ -25,6 +25,16 @@ class EvalConfig:
     neighborhood_km: Sequence[float] = (0.0, 25.0, 50.0, 100.0)
     grid_km: float = 4.0
 
+    # --- Geometry ----------------------------------------------------------
+    # "grid"  -> (N, L, H, W); neighbourhood metrics (FSS) are meaningful.
+    # "point" -> (N, L, S) at S irregular station locations; FSS is SKIPPED.
+    #
+    # This is not a formality. Station data shoehorned into a degenerate
+    # (N, L, 1, S) grid runs happily and reports an FSS that averaged over
+    # adjacent station INDICES -- alphabetical-order smoothing wearing a
+    # kilometre label. Declaring the geometry makes that impossible.
+    geometry: str = "grid"
+
     # --- Ground truth ------------------------------------------------------
     # If `obs` arrives continuous (e.g. mm/hr of QPE) this threshold makes it
     # binary. IMD's operational cloudburst figure is ~100 mm/hr over 20-30 km^2;
@@ -43,6 +53,15 @@ class EvalConfig:
     # --- Provenance --------------------------------------------------------
     name: str = "default"
     notes: str = ""
+
+    def __post_init__(self):
+        if self.geometry not in ("grid", "point"):
+            raise ValueError(f"geometry must be 'grid' or 'point', "
+                             f"got {self.geometry!r}")
+
+    @property
+    def is_point(self) -> bool:
+        return self.geometry == "point"
 
     def neighborhood_pixels(self) -> list[int]:
         """km -> odd pixel window widths."""

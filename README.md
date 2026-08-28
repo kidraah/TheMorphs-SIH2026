@@ -1,7 +1,23 @@
 # nowcast-eval
 
-A scoring harness for severe-weather nowcasts — thunderstorm, cloudburst,
-flash flood — at 30 min to 6 h lead times.
+A scoring harness for severe-weather nowcasts — thunderstorm, extreme rain,
+cloudburst, flash flood — at 30 min to 6 h lead times, plus the SEVIR data
+loader that feeds pretraining.
+
+> ### Two limits to know before reading further
+>
+> **SEVIR pretraining reaches ~3 h, not 6 h.** A SEVIR event is 4 hours
+> long; spend 1 h on context and 3 h of targets remain. The far half of the
+> 2–6 h window — the part the project's claim actually rests on — can only
+> come from IMDAA/INSAT fine-tuning on Indian data. `SEVIRConfig` raises
+> rather than silently truncating if asked for more.
+>
+> **The cloudburst head is scored at station points, not on the grid.**
+> IMD's 100 mm/hr over 20–30 km² is incompatible with IMERG's ~120 km² cell,
+> so the gridded head is named *extreme rain* and true cloudbursts are
+> scored against IMD AWS/ARG stations. See [docs/LABELS.md](docs/LABELS.md),
+> which also records why INSAT-derived rainfall products (IMSRA, HEM) are
+> excluded as training targets.
 
 **It measures; it does not predict.** There is no model here, no fitting,
 no randomness. Every number is a deterministic function of
@@ -51,6 +67,19 @@ r.to_json("artifacts/run017.json")
 
 Everything is broken out **per lead time**. A pooled number hides the only
 thing that matters: where skill dies.
+
+## Geometry: grid and point heads
+
+```python
+EvalConfig(geometry="grid")    # (N, L, H, W) — IMERG-based heads
+EvalConfig(geometry="point")   # (N, L, S)    — IMD station cloudburst head
+```
+
+Point geometry **omits FSS**: station array order carries no distance
+information, so a neighbourhood filter over it is alphabetical-order
+smoothing wearing a kilometre label. Passing `(N, L, 1, S)` — stations
+smuggled in as a degenerate grid — used to run silently and report a
+plausible FSS. It now raises.
 
 ## Multi-hazard (the MTL heads)
 
@@ -145,12 +174,47 @@ Two limits the loader enforces or flags rather than hiding:
   1 h on context and 3 h of targets remain. A config asking for more raises
   with an explanation. The far half of the 2–6 h window has to come from
   IMDAA/INSAT fine-tuning.
-- **The VIL decode is unverified and warns.** SEVIR stores VIL with a
-  non-linear uint8 encoding, so the placeholder scale does not recover
-  kg/m². Confirm it before defining any label threshold. Related: India has
-  no NEXRAD — if the Indian truth source is IMERG (~11 km) or IMD's gridded
-  gauge product (~25 km), **label** resolution, not input resolution, is the
-  binding constraint on "hyper-local".
+- **Decoding is verified against the source, not assumed.** VIL uses the
+  published piecewise uint8 rule (SEVIR NeurIPS-2020 supplemental, eq. 2),
+  pinned by a continuity test at the branch boundary because flat text
+  extraction of the PDF cannot distinguish `exp((X-83.9)/38.9)` from
+  `exp(X-83.9)/38.9` — and the wrong reading differs by 30 orders of
+  magnitude. Satellite channels use the Table 2 scaling factors, and the
+  int16 missing-pixel sentinel becomes NaN rather than −327.68 °C, which
+  would otherwise read as an extremely cold cloud top: exactly the signal
+  the CTT drop rate keys on.
+
+## Model: `nowcast_model`
+
+One shared backbone, three heads, **two output geometries** — the split
+follows from [docs/LABELS.md](docs/LABELS.md), not from architectural taste.
+
+```python
+out = model(x, station_coords)     # x: (B, C, T, H, W)
+# rain_rate     (B, L, H, W)   grid, IMERG-supervised
+# extreme_rain  (B, L, H, W)   grid, IMERG >99.9th pct
+# cloudburst    (B, L, S)      point, IMD station-supervised
+```
+
+The backbone uses **divided space-time attention**: each block attends over
+time (each pixel watches its own history), then over space (each frame
+looks at itself). Full joint attention over a 96×96×4 input would be ~1.4
+billion pairs per layer; the factorisation makes it trainable while still
+letting information travel in both axes.
+
+The point head samples the shared feature map at station coordinates with
+bilinear `grid_sample`, so the loss at a station updates exactly the
+features under it. Tested: an (x, y) / (row, col) transposition here would
+train perfectly happily and produce a worthless model, so
+`test_point_head_samples_the_named_pixel` pins it.
+
+`forward` returns **logits**, not probabilities — `predict_proba` gives the
+harness what it wants. Feeding probabilities to a with-logits loss is a
+silent bug that trains badly and raises nothing.
+
+Losses are focal with `pos_weight`, because at a 1e-4 base rate plain BCE
+finds "predict no everywhere" almost immediately and sits there with an
+excellent-looking curve.
 
 ## The judgment calls
 
@@ -171,7 +235,7 @@ in every result — rather than buried in the code:
 
 ## Validation
 
-`tests/` (76 tests) proves the ruler is straight by known-answer testing,
+`tests/` (133 tests) proves the ruler is straight by known-answer testing,
 not by eyeballing plausibility:
 
 - perfect forecast → POD 1, FAR 0, CSI 1, Brier 0 **exactly**

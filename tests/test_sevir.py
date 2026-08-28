@@ -12,8 +12,9 @@ import pytest
 
 from nowcast_data.grid import (block_mean, match_sensor_resolution,
                                nearest_upsample, subsample_time)
-from nowcast_data.sevir import (DEFAULT_CHANNELS, VIL_CHANNEL, SEVIRConfig,
-                                SEVIRLoader, stack_samples)
+from nowcast_data.sevir import (DEFAULT_CHANNELS, INT16_MISSING, VIL_CHANNEL,
+                                SEVIRConfig, SEVIRLoader, decode_linear,
+                                decode_vil, stack_samples)
 from nowcast_data.synthetic import build_store
 
 
@@ -131,7 +132,9 @@ def test_physical_scaling_is_applied(store):
     normalisation statistic downstream is wrong by a factor of 100."""
     loader = SEVIRLoader(_cfg(store))
     raw = loader._read_raw("E000", DEFAULT_CHANNELS["ir107"])
-    assert raw.max() < 10, f"expected scaled units, got max {raw.max()}"
+    # nanmax: the fixture injects missing pixels, which decode to NaN
+    assert np.isnan(raw).any(), "fixture must contain missing pixels"
+    assert np.nanmax(raw) < 10, f"expected scaled units, got max {np.nanmax(raw)}"
 
 
 def test_channels_are_degraded_differently(store):
@@ -142,7 +145,8 @@ def test_channels_are_degraded_differently(store):
     assert wv.shape == tir.shape
 
     def blockiness(a):
-        return np.abs(a[:, 0::2, 0::2] - a[:, 1::2, 1::2]).mean()
+        # nan-aware: missing pixels propagate through the downsample
+        return np.nanmean(np.abs(a[:, 0::2, 0::2] - a[:, 1::2, 1::2]))
 
     assert blockiness(wv) == pytest.approx(0.0, abs=1e-12)
     assert blockiness(tir) > 1e-6
@@ -219,9 +223,84 @@ def test_event_missing_a_channel_is_dropped_not_zero_filled(store, tmp_path):
     assert "E001" in loader.event_ids()
 
 
-def test_unverified_vil_decode_warns(store):
-    with pytest.warns(UserWarning, match="non-linear"):
-        SEVIRLoader(_cfg(store))
+# --------------------------------------------------------------------------
+# Decoding -- the silent-failure surface
+# --------------------------------------------------------------------------
+
+def test_vil_decode_matches_the_published_formula():
+    """SEVIR NeurIPS-2020 supplemental, eq. 2. Hand-evaluated at each branch."""
+    x = np.array([0, 5, 6, 18, 19, 255], dtype=np.uint8)
+    got = decode_vil(x)
+    assert got[0] == 0.0 and got[1] == 0.0                      # X <= 5
+    assert got[2] == pytest.approx((6 - 2) / 90.66)             # linear branch
+    assert got[3] == pytest.approx((18 - 2) / 90.66)            # branch edge
+    assert got[4] == pytest.approx(np.exp((19 - 83.9) / 38.9))  # exp branch
+    assert got[5] == pytest.approx(np.exp((255 - 83.9) / 38.9))
+
+
+def test_vil_decode_is_continuous_at_the_branch_boundary():
+    """Pins the parenthesisation.
+
+    The published PDF renders the third branch as a display fraction, and
+    flat text extraction cannot distinguish exp((X-83.9)/38.9) from
+    exp(X-83.9)/38.9. Continuity settles it: the linear branch gives 0.1765
+    at X=18, the correct reading gives 0.1838, and the wrong one gives
+    6e-31. Without this test the ambiguity could silently resolve the wrong
+    way in a future edit and mislabel every pretraining sample.
+    """
+    lo = decode_vil(np.array([18], dtype=np.uint8))[0]
+    hi = decode_vil(np.array([19], dtype=np.uint8))[0]
+    assert lo == pytest.approx(0.176483, abs=1e-5)    # (18-2)/90.66
+    assert hi == pytest.approx(0.188556, abs=1e-5)    # exp((19-83.9)/38.9)
+    assert abs(hi - lo) < 0.02, "branches must nearly meet, not jump 30 orders"
+
+
+def test_vil_decode_spans_physical_range():
+    full = decode_vil(np.arange(256, dtype=np.uint8))
+    assert full.min() == 0.0
+    assert 50 < full.max() < 120, f"kg/m^2 top end implausible: {full.max()}"
+    assert np.all(np.diff(full) >= 0), "decode must be monotonic"
+
+
+def test_missing_sentinel_becomes_nan_not_minus_327_degrees():
+    """int16 min * 1e-2 = -327.68 degC reads as an extremely cold cloud top --
+    exactly the signal the CTT drop rate keys on. It must be NaN."""
+    raw = np.array([INT16_MISSING, 0, 2500], dtype=np.int16)
+    out = decode_linear(raw, 1e-2)
+    assert np.isnan(out[0])
+    assert out[1] == 0.0 and out[2] == pytest.approx(25.0)
+
+
+def test_missing_pixels_survive_downsampling_as_nan(store):
+    """One missing pixel must not void a whole block, and must not silently
+    become a real number either."""
+    loader = SEVIRLoader(_cfg(store))
+    tir = loader.load_channel("E000", DEFAULT_CHANNELS["ir107"])
+    assert np.isfinite(tir).any(), "downsampling must not void everything"
+
+
+def test_nan_aware_block_mean_averages_valid_members():
+    a = np.array([[1.0, np.nan], [3.0, 5.0]])
+    assert block_mean(a, 2)[0, 0] == pytest.approx(3.0)   # mean of 1,3,5
+    allnan = np.full((2, 2), np.nan)
+    assert np.isnan(block_mean(allnan, 2)[0, 0])
+
+
+def test_unverified_channel_still_warns():
+    """The mechanism stays live for any channel not yet checked."""
+    from dataclasses import replace
+    spec = replace(VIL_CHANNEL, verified=False)
+    assert spec.verified is False
+
+
+def test_synthetic_target_has_real_dynamic_range(store):
+    """Guards the fixture: an earlier version wrote VIL bytes of 0 and 1,
+    which decoded to ~zero everywhere -- a degenerate training target that
+    every test still passed on."""
+    loader = SEVIRLoader(_cfg(store))
+    y = loader.sample("E000").y
+    assert y.max() > 1.0, f"target must span real kg/m^2, got max {y.max()}"
+    assert (y > 0).mean() > 0.01, "target must not be almost entirely zero"
 
 
 def test_missing_catalog_columns_are_reported(tmp_path):

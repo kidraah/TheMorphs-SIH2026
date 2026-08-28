@@ -40,9 +40,57 @@ import numpy as np
 
 from .grid import match_sensor_resolution, subsample_time
 
+# Missing satellite pixels are stored as the minimum int16 value.
+# Left undecoded this becomes -32768 * 1e-2 = -327.68 degC, which is NOT
+# obviously invalid to a normaliser -- it reads as an extremely cold cloud
+# top, precisely the signal the CTT drop rate keys on. It must become NaN
+# before any statistic touches it.
+INT16_MISSING = -32768
+
 SEVIR_CADENCE_MIN = 5.0
 SEVIR_FRAMES = 49          # 4 hours at 5 min, inclusive
 SEVIR_DOMAIN_KM = 384.0
+
+
+def decode_linear(raw: np.ndarray, scale: float, offset: float = 0.0,
+                  missing: int | None = INT16_MISSING) -> np.ndarray:
+    """Satellite channels: decoded = encoded * SCALING_FACTOR.
+
+    Scaling factors from the SEVIR NeurIPS-2020 supplemental, Table 2:
+    vis 1e-4 (reflectance factor), ir069 1e-2 (degC), ir107 1e-2 (degC).
+    """
+    out = raw.astype(np.float64)
+    if missing is not None:
+        out[raw == missing] = np.nan
+    return out * scale + offset
+
+
+def decode_vil(raw: np.ndarray) -> np.ndarray:
+    """SEVIR VIL uint8 -> kg/m^2. Non-linear, three branches.
+
+    From the SEVIR NeurIPS-2020 supplemental (eq. 2):
+
+        0                        if X <= 5
+        (X - 2) / 90.66          if 5 < X <= 18
+        exp((X - 83.9) / 38.9)   if X > 18
+
+    The encoding is non-linear because VIL histograms are heavily skewed,
+    so a linear stretch would waste most of the 0-255 range.
+
+    On the third branch: the published PDF renders it as a display fraction
+    and flat text extraction is ambiguous between exp((X-83.9)/38.9) and
+    exp(X-83.9)/38.9. Continuity at the X=18 boundary settles it -- the
+    linear branch gives 0.1765 there, and only the first reading matches
+    (0.1838); the second gives 6e-31. `test_vil_decode_is_continuous`
+    pins this so the ambiguity cannot silently resolve the wrong way later.
+    """
+    x = raw.astype(np.float64)
+    out = np.zeros_like(x)
+    lin = (x > 5) & (x <= 18)
+    exp = x > 18
+    out[lin] = (x[lin] - 2.0) / 90.66
+    out[exp] = np.exp((x[exp] - 83.9) / 38.9)
+    return out
 
 
 @dataclass(frozen=True)
@@ -51,9 +99,18 @@ class ChannelSpec:
     img_type: str
     native_km: float        # SEVIR's own resolution
     sensor_km: float        # what INSAT-3D/3DR actually resolves
-    scale: float = 1.0      # raw -> physical units
+    scale: float = 1.0      # raw -> physical units (linear encoding only)
     offset: float = 0.0
-    verified: bool = True    # False -> decode needs checking against the docs
+    encoding: str = "linear"          # "linear" | "vil"
+    missing: int | None = INT16_MISSING
+    verified: bool = True             # False -> decode unchecked against the docs
+
+    def decode(self, raw: np.ndarray) -> np.ndarray:
+        if self.encoding == "vil":
+            return decode_vil(raw)
+        if self.encoding == "linear":
+            return decode_linear(raw, self.scale, self.offset, self.missing)
+        raise ValueError(f"unknown encoding {self.encoding!r}")
 
 
 # INSAT-3D/3DR counterparts. TIR is 4 km, WV is 8 km -- the asymmetry that
@@ -72,11 +129,10 @@ DEFAULT_CHANNELS: dict[str, ChannelSpec] = {
 #
 # TWO WARNINGS, both load-bearing:
 #
-#   * `scale` here is a placeholder. SEVIR stores VIL with a NON-LINEAR
-#     uint8 encoding, so a single multiplier does NOT recover kg/m^2.
-#     Verify the decoding against the SEVIR documentation before defining
-#     any label threshold on it -- the label definition determines what the
-#     model learns, and a wrong decode silently mislabels every sample.
+#   * The decode is the verified piecewise rule from the SEVIR NeurIPS-2020
+#     supplemental (see decode_vil). Output is kg/m^2. It is NOT a rain rate:
+#     converting VIL to mm/hr needs a separate relationship, so do not put a
+#     100 mm/hr threshold on this number.
 #
 #   * India has no NEXRAD. Nothing at 1 km will be available operationally;
 #     the Indian truth source (INSAT QPE, IMERG at ~11 km, or IMD's gridded
@@ -84,7 +140,7 @@ DEFAULT_CHANNELS: dict[str, ChannelSpec] = {
 #     20-30 km^2 cloudburst is below one label pixel, and label resolution --
 #     not input resolution -- becomes the binding constraint on "hyper-local".
 VIL_CHANNEL = ChannelSpec("vil", native_km=1.0, sensor_km=4.0,
-                          scale=1.0, verified=False)
+                          encoding="vil", missing=None, verified=True)
 
 
 @dataclass
@@ -179,12 +235,12 @@ class SEVIRLoader:
     def __init__(self, config: SEVIRConfig):
         self.cfg = config
         self.catalog = SEVIRCatalog(config.catalog, config.max_pct_missing)
-        if not config.target.verified:
+        unverified = [c.img_type for c in list(config.inputs) + [config.target]
+                      if not c.verified]
+        if unverified:
             warnings.warn(
-                f"channel {config.target.img_type!r} has an unverified decode "
-                f"(scale={config.target.scale}). SEVIR VIL uses a non-linear "
-                f"uint8 encoding; confirm it before defining label thresholds.",
-                stacklevel=2)
+                f"unverified decode for {unverified}; confirm against the SEVIR "
+                f"documentation before defining label thresholds.", stacklevel=2)
 
     # --- raw access --------------------------------------------------------
     def _read_raw(self, event_id: str, spec: ChannelSpec) -> np.ndarray:
@@ -205,7 +261,7 @@ class SEVIRLoader:
         if arr.ndim != 3:
             raise ValueError(f"expected 3 dims for {spec.img_type}, got {arr.shape}")
         arr = np.moveaxis(arr, -1, 0)
-        return arr.astype(np.float64) * spec.scale + spec.offset
+        return spec.decode(arr)
 
     def load_channel(self, event_id: str, spec: ChannelSpec) -> np.ndarray:
         """Physical units, INSAT resolution, INSAT cadence. (T, H, W)."""

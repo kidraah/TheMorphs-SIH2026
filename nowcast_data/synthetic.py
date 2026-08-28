@@ -49,8 +49,17 @@ def build_store(root: Path, n_events: int = 6, n_days: int = 2,
         arr = np.zeros((n_events, size, size, SEVIR_FRAMES), dtype=np.float32)
         for i in range(n_events):
             arr[i] = _storm(size, SEVIR_FRAMES, rng, drift=size / 400.0)
-        # store in raw units so the loader's `scale` has something to undo
-        raw = (arr / SCALES[img_type]).astype(np.int16 if img_type != "vil" else np.uint8)
+        # Store in RAW units so the loader's decode has something to undo.
+        # VIL is uint8 0-255 with a non-linear encoding, so the blob must be
+        # stretched across the real byte range -- an earlier version wrote
+        # values of 0 and 1, which decoded to ~zero everywhere and made the
+        # training target degenerate while every test still passed.
+        if img_type == "vil":
+            raw = (arr / max(arr.max(), 1e-9) * 255).astype(np.uint8)
+        else:
+            raw = (arr / SCALES[img_type]).astype(np.int16)
+            # a few missing pixels, as the real files carry them
+            raw[0, :4, :4, 0] = -32768
         with h5py.File(root / fname, "w") as fh:
             fh.create_dataset(img_type, data=raw)
             fh.create_dataset("id", data=np.array(

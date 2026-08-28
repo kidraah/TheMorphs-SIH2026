@@ -86,6 +86,8 @@ def collect_stats(pred, obs, threshold, cfg: EvalConfig, mask=None) -> PerSample
         misses=(~f & o & valid).sum(axis=ax).astype(np.float64),
     )
 
+    if cfg.is_point:
+        return st        # no spatial neighbourhood over station index
     for size, km in zip(cfg.neighborhood_pixels(), cfg.neighborhood_km):
         pf = neighborhood_fractions(f, valid, size)
         po = neighborhood_fractions(o, valid, size)
@@ -223,12 +225,13 @@ def bootstrap_ci(
     cfg = config or EvalConfig()
     t = cfg.headline_threshold if threshold is None else threshold
     pred = np.asarray(pred, dtype=np.float64)
-    if pred.ndim < 3:
-        raise ValueError(f"expected (N, ..., H, W) with N the case axis, "
-                         f"got {pred.shape}")
+    min_dims = 2 if cfg.is_point else 3
+    if pred.ndim < min_dims:
+        raise ValueError(f"expected at least {min_dims} dims with N the case "
+                         f"axis, got {pred.shape}")
 
     st = collect_stats(pred, obs, t, cfg, mask)
-    kms = list(cfg.neighborhood_km)
+    kms = [] if cfg.is_point else list(cfg.neighborhood_km)
     N = st.n_samples
     all_idx = np.arange(N)
 

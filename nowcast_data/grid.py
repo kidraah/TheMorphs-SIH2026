@@ -21,6 +21,8 @@ which is exactly the operational situation.
 """
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 
 
@@ -44,6 +46,15 @@ def block_mean(arr: np.ndarray, factor: int) -> np.ndarray:
 
     lead = arr.shape[:-2]
     out = arr.astype(np.float64).reshape(*lead, h // factor, factor, w // factor, factor)
+
+    # NaN marks missing pixels (see sevir.decode_linear). A plain mean would
+    # let one missing pixel void an entire block; averaging the valid members
+    # keeps the block usable and leaves NaN only where everything is missing,
+    # which is what the harness's validity masks expect.
+    if np.isnan(out).any():
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)   # all-NaN blocks
+            return np.nanmean(out, axis=(-3, -1))
     return out.mean(axis=(-3, -1))
 
 

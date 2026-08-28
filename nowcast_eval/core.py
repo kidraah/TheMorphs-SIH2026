@@ -82,10 +82,15 @@ class EvaluationResult:
         cfg = self.config
         lines = []
         lines.append(f"eval: {cfg['name']}   headline threshold p>={cfg['headline_threshold']}")
-        lines.append(f"grid {cfg['grid_km']} km   neighbourhoods {list(cfg['neighborhood_km'])} km")
+        if cfg.get("geometry", "grid") == "point":
+            lines.append("geometry: point (station locations)")
+        else:
+            lines.append(f"grid {cfg['grid_km']} km   "
+                         f"neighbourhoods {list(cfg['neighborhood_km'])} km")
         lines.append("")
         head = f"{'lead':>8} {'base rate':>11} {'POD':>7} {'FAR':>7} {'CSI':>7} {'bias':>7} {'BSS':>8}"
-        fss_cols = [f"FSS@{int(k)}km" for k in cfg["neighborhood_km"]]
+        point = cfg.get("geometry", "grid") == "point"
+        fss_cols = [] if point else [f"FSS@{int(k)}km" for k in cfg["neighborhood_km"]]
         head += "".join(f"{c:>10}" for c in fss_cols)
         lines.append(head)
         lines.append("-" * len(head))
@@ -96,7 +101,7 @@ class EvaluationResult:
             row = (f"{lead:>8} {l.base_rate:>11.2e} {h['pod']:>7.3f} {h['far']:>7.3f} "
                    f"{h['csi']:>7.3f} {h['frequency_bias']:>7.3f} "
                    f"{l.probabilistic['bss']:>8.3f}")
-            for km in cfg["neighborhood_km"]:
+            for km in ([] if point else cfg["neighborhood_km"]):
                 m = next((f for f in l.fss
                           if f["neighborhood_km"] == km
                           and f["threshold"] == cfg["headline_threshold"]), None)
@@ -107,8 +112,12 @@ class EvaluationResult:
         lines.append(f"pooled base rate {self.pooled['base_rate']:.3e}  "
                      f"CSI {self.pooled['headline']['csi']:.3f}  "
                      f"BSS {self.pooled['probabilistic']['bss']:.3f}")
-        lines.append(f"'useful' FSS line for this base rate: "
-                     f"{useful_scale_threshold(self.pooled['base_rate']):.3f}")
+        if point:
+            lines.append("geometry=point: FSS omitted -- station order is not "
+                         "a spatial neighbourhood")
+        else:
+            lines.append(f"'useful' FSS line for this base rate: "
+                         f"{useful_scale_threshold(self.pooled['base_rate']):.3f}")
 
         # Confidence intervals, if attached. Printed as a separate block so the
         # point estimates never appear without their uncertainty beside them.
@@ -138,11 +147,16 @@ def _score_block(pred, obs, mask, cfg: EvalConfig) -> dict:
     tables = [contingency(pred, obs, t, mask).to_dict() for t in cfg.thresholds]
     headline = contingency(pred, obs, cfg.headline_threshold, mask).to_dict()
 
+    # Point geometry has no spatial neighbourhood: stations are irregularly
+    # spaced and their array order carries no distance information, so a
+    # neighbourhood filter over it would be meaningless. FSS is omitted
+    # rather than computed on nonsense.
     fss_rows = []
-    for size, km in zip(cfg.neighborhood_pixels(), cfg.neighborhood_km):
-        for t in cfg.thresholds:
-            fss_rows.append(fss(pred, obs, t, size, mask, grid_km=km).to_dict()
-                            | {"neighborhood_km": km})
+    if not cfg.is_point:
+        for size, km in zip(cfg.neighborhood_pixels(), cfg.neighborhood_km):
+            for t in cfg.thresholds:
+                fss_rows.append(fss(pred, obs, t, size, mask, grid_km=km).to_dict()
+                                | {"neighborhood_km": km})
 
     prob = probabilistic_scores(pred, obs, cfg.n_reliability_bins, mask).to_dict()
     return {
@@ -169,8 +183,17 @@ def evaluate(
 
     if pred.shape != obs.shape:
         raise ValueError(f"shape mismatch: pred {pred.shape} vs obs {obs.shape}")
-    if pred.ndim != 4:
-        raise ValueError(f"expected (N, L, H, W), got {pred.shape}")
+    if cfg.is_point:
+        if pred.ndim != 3:
+            raise ValueError(
+                f"geometry='point' expects (N, L, S) with S station locations, "
+                f"got {pred.shape}")
+    elif pred.ndim != 4:
+        raise ValueError(
+            f"expected (N, L, H, W), got {pred.shape}. For station-point truth "
+            f"(e.g. IMD AWS/ARG gauges) set EvalConfig(geometry='point') and "
+            f"pass (N, L, S) -- do NOT reshape stations into a 1 x S grid, "
+            f"which would make FSS average over station index.")
     if np.isfinite(pred).any() and (np.nanmin(pred) < 0 or np.nanmax(pred) > 1):
         raise ValueError("pred must be probabilities in [0, 1]")
 
@@ -203,6 +226,7 @@ def evaluate(
                           obs.reshape(-1, *obs.shape[2:]),
                           mask.reshape(-1, *mask.shape[2:]) if mask is not None else None,
                           cfg)
+    pooled["geometry"] = cfg.geometry
 
     return EvaluationResult(
         config=cfg.to_dict(),
