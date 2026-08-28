@@ -14,3 +14,4 @@ configs/mosdac_bulk.json
 configs/*_local.json
 data/cache/
 data/cache_build.log
+runs_cached.log

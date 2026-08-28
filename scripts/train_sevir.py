@@ -14,9 +14,10 @@ from pathlib import Path
 
 from nowcast_data.sevir import DEFAULT_CHANNELS, VIL_CHANNEL, SEVIRConfig, SEVIRLoader
 from nowcast_model import ModelConfig, MultiTaskNowcaster
-from nowcast_train import (DatasetConfig, NaNPolicy, SEVIRDataset, TargetConfig,
+from nowcast_train import (CachedEvents, CacheConfig, CachedSEVIRDataset,
+                           DatasetConfig, NaNPolicy, SEVIRDataset, TargetConfig,
                            TrainConfig, compute_channel_stats, episode_ids,
-                           split_sevir)
+                           split_by_time, split_sevir)
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -33,7 +34,9 @@ def main():
     ap.add_argument("--device", default="auto")
     ap.add_argument("--nan-policy", default="mask",
                     choices=[p.value for p in NaNPolicy])
-    ap.add_argument("--workers", type=int, default=4)
+    ap.add_argument("--workers", type=int, default=0)
+    ap.add_argument("--cache", default="",
+                    help="path to a pre-decoded cache dir; 5x faster than raw HDF5")
     ap.add_argument("--no-resume", action="store_true")
     ap.add_argument("--smoke", action="store_true",
                     help="tiny subset + tiny model, to prove the wiring")
@@ -44,7 +47,15 @@ def main():
         inputs=[DEFAULT_CHANNELS["ir107"], DEFAULT_CHANNELS["ir069"]],
         target=VIL_CHANNEL, context_frames=2, horizon_frames=6))
 
-    report = split_sevir(loader)
+    cache = None
+    if args.cache:
+        # verify_manifest refuses a cache built under a different config, so a
+        # stale cache cannot be trained on silently.
+        cache = CachedEvents(args.cache, CacheConfig())
+        report = split_by_time(cache.event_ids,
+                               [cache.day_of(e) for e in cache.event_ids])
+    else:
+        report = split_sevir(loader)
     print(report.summary(), "\n")
 
     tr_ids = report["train"].event_ids
@@ -63,12 +74,18 @@ def main():
 
     dcfg = DatasetConfig(nan_policy=NaNPolicy(args.nan_policy), stats=stats,
                          targets=TargetConfig())
-    tr = SEVIRDataset(loader, tr_ids, dcfg)
-    va = SEVIRDataset(loader, va_ids, dcfg)
+    if cache is not None:
+        tr = CachedSEVIRDataset(cache, tr_ids, dcfg)
+        va = CachedSEVIRDataset(cache, va_ids, dcfg)
+        print(f"using cache {args.cache} ({len(cache)} events)")
+    else:
+        tr = SEVIRDataset(loader, tr_ids, dcfg)
+        va = SEVIRDataset(loader, va_ids, dcfg)
 
     model = MultiTaskNowcaster(ModelConfig(
         in_channels=tr.in_channels, context_frames=2,
-        grid_size=loader.cfg.grid_size, lead_steps=6,
+        grid_size=(cache.cfg.grid_size if cache else loader.cfg.grid_size),
+        lead_steps=6,
         dim=args.dim, depth=args.depth))
     print(f"model: {model.n_parameters():,} params, "
           f"{tr.in_channels} input channels, heads {list(model.geometries)}")
