@@ -3,7 +3,7 @@ name = "nowcast-eval"
 version = "0.1.0"
 description = "Scoring harness for severe-weather nowcasts (thunderstorm / cloudburst / flash flood)"
 requires-python = ">=3.10"
-dependencies = ["numpy>=1.24", "scipy>=1.10", "matplotlib>=3.7"]
+dependencies = ["numpy>=1.24", "scipy>=1.10", "matplotlib>=3.7", "h5py>=3.8", "pandas>=2.0"]
 
 [project.optional-dependencies]
 baselines = ["pysteps>=1.7"]
@@ -14,7 +14,10 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["nowcast_eval"]
+packages = ["nowcast_eval", "nowcast_data"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# The VIL decode warning is deliberate and asserted by test_unverified_vil_decode_warns;
+# silenced elsewhere so it does not drown the run.
+filterwarnings = ["ignore:channel 'vil' has an unverified decode"]

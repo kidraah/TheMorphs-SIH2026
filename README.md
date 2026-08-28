@@ -119,6 +119,39 @@ healthy score while blind to a head — and it is always the rarest, most
 important hazard that goes blind first, because that is where the evidence
 runs out.
 
+## Data: `nowcast_data`
+
+SEVIR loader, targeted at **INSAT-native resolution and cadence** rather
+than SEVIR's own. Three decisions, each of which throws information away on
+purpose:
+
+- **Per-channel resolution matching, not a uniform resize.** INSAT TIR is
+  4 km but WV is 8 km. SEVIR water vapour therefore goes 2 km → 8 km → back
+  onto the 4 km grid, so it occupies the analysis grid carrying only 8 km of
+  real information. Resizing it straight to 4 km would let the model learn
+  moisture gradients INSAT physically cannot deliver — and IWV variation is
+  this project's cornerstone predictor, so it is the worst channel to get
+  wrong. Tested: WV must come out blocky at 2×2, TIR must not.
+- **Cadence matched to the scan interval.** SEVIR is 5-minute frames; INSAT
+  full disk is 30 min. Five of every six frames are discarded, because a
+  backbone trained on 5-minute motion learns evolution at a timescale the
+  operational feed never shows it.
+- **Samples carry their storm day**, and `day_groups()` hands it straight to
+  `bootstrap_ci(groups=...)`.
+
+Two limits the loader enforces or flags rather than hiding:
+
+- **SEVIR caps pretraining at ~3 h lead**, not 6. An event is 4 hours; spend
+  1 h on context and 3 h of targets remain. A config asking for more raises
+  with an explanation. The far half of the 2–6 h window has to come from
+  IMDAA/INSAT fine-tuning.
+- **The VIL decode is unverified and warns.** SEVIR stores VIL with a
+  non-linear uint8 encoding, so the placeholder scale does not recover
+  kg/m². Confirm it before defining any label threshold. Related: India has
+  no NEXRAD — if the Indian truth source is IMERG (~11 km) or IMD's gridded
+  gauge product (~25 km), **label** resolution, not input resolution, is the
+  binding constraint on "hyper-local".
+
 ## The judgment calls
 
 The formulas are exact. The numbers are dominated by the choices *around*
