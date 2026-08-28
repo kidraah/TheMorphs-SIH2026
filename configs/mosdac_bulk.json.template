@@ -1,0 +1,19 @@
+{
+  "_comment": "BULK request template. DO NOT RUN until configs/mosdac_test.json has passed ingest_scan on a current-version file. Copy to mosdac_bulk.json (gitignored) and fill the window per event.",
+  "_gate": "satpy's insat3d_img_l1b_h5 reader was written against older sample files. If MOSDAC's format has drifted it fails SILENTLY -- plausible arrays, wrong values -- so bulk-pulling first risks days of unreadable data.",
+  "username": "",
+  "password": "",
+  "datasetId": "3DIMG_L1B_STD",
+  "_datasetId_note": "Use whichever id the format check confirmed. Archive-era events (2015-2023) may need a different id from recent dates.",
+  "fromDate": "DDMMMYYYY",
+  "toDate": "DDMMMYYYY",
+  "startTime": "0600",
+  "endTime": "1800",
+  "_time_window_note": "0600-1800 UTC = 1130-2330 IST covers the afternoon/evening convective maximum. 24 scans/day at 30-min cadence instead of 48 -- halves the volume for the half of the day that matters.",
+  "boundingBox": "6.0,68.0,38.0,98.0",
+  "_boundingBox_format": "CONFIRM MOSDAC's corner order before trusting this. Written as lat_min,lon_min,lat_max,lon_max to match the India 4 km analysis grid (nowcast_data/grids.py covers 5.8-39.5N, 62.3-101.7E).",
+  "_boundingBox_is_mandatory_here": "Full-disk bulk is not affordable: ~400 MB/scan x 24 scans/day = ~9.6 GB/day. One monsoon season (JJAS, 122 days) is ~1.2 TB and this machine has ~271 GB free. Spatial subsetting is required, not optional.",
+  "count": "",
+  "_count_empty_means": "unlimited within the window",
+  "organize_by_date": true
+}

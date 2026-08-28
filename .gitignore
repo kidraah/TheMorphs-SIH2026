@@ -10,3 +10,5 @@ artifacts/*.json
 runs/
 data/sevir/
 .env
+configs/mosdac_bulk.json
+configs/*_local.json

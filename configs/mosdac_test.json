@@ -1,0 +1,19 @@
+{
+  "_comment": "FORMAT-CHECK request. One recent daytime scan, full disk, to answer whether satpy's reader handles MOSDAC's CURRENT product version. Credentials are read from the gitignored .env -- leave them empty here.",
+  "_purpose": "Closes the current-format question. Nothing bulk should be downloaded before this passes.",
+  "username": "",
+  "password": "",
+  "datasetId": "3DIMG_L1B_STD",
+  "_datasetId_uncertain": "3DIMG_L1B_STD is CONFIRMED working for 2019. It returns a parameter error for 2026 dates. Try in this order and record which works: 3SIMG_L1B_STD (INSAT-3DS, operational Feb 2024 -- the MOSDAC manual's own example), 3DRIMG_L1B_STD (INSAT-3DR), then 3DIMG_L1B_STD.",
+  "fromDate": "01AUG2026",
+  "toDate": "01AUG2026",
+  "_time_window": "0800-0900 UTC = 1330-1430 IST. Monsoon afternoon: convection active AND sun high, so VIS/SWIR carry signal and the reflective checks actually run rather than being skipped as N/A.",
+  "startTime": "0800",
+  "endTime": "0900",
+  "boundingBox": "",
+  "_boundingBox_empty_because": "Full disk. The format check must exercise the same product geometry the reader was written against; a spatial subset could mask a geometry change.",
+  "count": 1,
+  "organize_by_date": false,
+  "_expected_size": "~400 MB for one full-disk L1B scan.",
+  "_after_download": "cd /Users/evad/nowcast && .venv/bin/python -c \"from nowcast_data.insat import ingest_scan; a,c = ingest_scan('PATH.h5', strict=False); print(c.report())\""
+}

@@ -1,10 +1,12 @@
 """Tests for the Indian ingestion path: credentials, grid, INSAT, IMERG, alignment.
 
-None of these need network access or credentials. They test the decode,
-orientation and sanity-check logic against synthetic data shaped like the
-real products -- which is where the silent failures live.
+None need network access or credentials. Most run against synthetic data
+shaped like the real products -- which is where the silent failures live --
+and the final block runs against the real 2019 MOSDAC scan when it is on
+disk, skipping otherwise.
 """
 import os
+from pathlib import Path
 import tempfile
 
 import numpy as np
@@ -277,3 +279,89 @@ def test_scan_without_rain_says_so():
     tir = np.full((50, 50), 210.0)
     with pytest.raises(ValueError, match="no pixels wetter"):
         al.alignment_offset(tir, np.zeros((50, 50)))
+
+
+# --------------------------------------------------------------------------
+# Night gating and product-version reporting
+# --------------------------------------------------------------------------
+
+def test_reflective_channels_are_na_at_night_not_failed():
+    """23:30 UTC is 05:00 IST. A dark VIS channel is correct behaviour, and
+    scoring it FAIL would make every pre-dawn scan look broken."""
+    meta = {"Sun_Elevation(Degrees)": -12.56}
+    arrays = {"TIR1": np.full((30, 30), 280.0),
+              "VIS": np.zeros((30, 30)), "SWIR": np.zeros((30, 30))}
+    chk = insat.check_physics(arrays, metadata=meta)
+    assert chk.passed, "night-time VIS must not fail the scan"
+    skipped = [r for r in chk.results if r.skipped]
+    assert {r.name.split()[0] for r in skipped} == {"VIS", "SWIR"}
+    assert "N/A" in chk.report()
+
+
+def test_reflective_channels_are_checked_in_daylight():
+    meta = {"Sun_Elevation(Degrees)": 62.0}
+    arrays = {"TIR1": np.full((30, 30), 280.0), "VIS": np.zeros((30, 30))}
+    chk = insat.check_physics(arrays, metadata=meta)
+    assert not any(r.skipped for r in chk.results)
+
+
+def test_illumination_is_reported_either_way():
+    chk = insat.check_physics({"TIR1": np.full((10, 10), 280.0)},
+                              metadata={"Sun_Elevation(Degrees)": -12.56})
+    assert any("sun elevation" in r.detail for r in chk.results)
+    assert insat.is_daylight({"Sun_Elevation(Degrees)": -12.56}) is False
+    assert insat.is_daylight({"Sun_Elevation(Degrees)": 45.0}) is True
+    assert insat.is_daylight({}) is True, "absent metadata must not skip silently"
+
+
+def test_skipped_checks_do_not_mask_a_real_failure():
+    meta = {"Sun_Elevation(Degrees)": -12.0}
+    chk = insat.check_physics({"TIR1": np.full((10, 10), 5.0),      # bad
+                               "VIS": np.zeros((10, 10))}, metadata=meta)
+    assert not chk.passed
+
+
+def test_product_identity_is_reported_with_the_result():
+    """A PASS must be attributable to a SPECIFIC product version: a 2019
+    file passing says nothing about MOSDAC's current output."""
+    meta = {"Software_Version": "1.0", "Product_Type": "STANDARD(FULL DISK)",
+            "HDF_Product_File_Name": "3DIMG_25AUG2019_2330_L1B_STD.h5"}
+    txt = insat.check_physics({"TIR1": np.full((10, 10), 280.0)},
+                              metadata=meta).report()
+    assert "Software_Version" in txt and "1.0" in txt
+    assert "diff this against a current-version file" in txt
+
+
+def test_thresholds_admit_the_real_observed_range():
+    """Regression on our own calibration error: the textbook 190-320 K window
+    would have failed a valid full-disk scan (observed 180.1-330.6 K)."""
+    lo, hi = insat.EXPECTED_BT_K["TIR1"]
+    assert lo <= 180.09 and hi >= 330.56, "must admit the measured 2019 scan"
+    wlo, whi = insat.EXPECTED_BT_K["WV"]
+    assert wlo <= 179.89 and whi >= 277.68
+
+
+# --------------------------------------------------------------------------
+# Against the real MOSDAC file, when present
+# --------------------------------------------------------------------------
+
+REAL_INSAT = Path("/Users/evad/chuchuchuchu/3DIMG_L1B_STD/2019/25AUG/"
+                  "3DIMG_25AUG2019_2330_L1B_STD_V01R00.h5")
+
+
+@pytest.mark.skipif(not REAL_INSAT.exists(), reason="real INSAT file not present")
+def test_real_2019_scan_passes_end_to_end():
+    meta = insat.read_metadata(REAL_INSAT)
+    assert meta["Satellite_Name"] == "INSAT-3D"
+    assert meta["Processing_Level"] == "L1B"
+    assert insat.solar_elevation(meta) < 0, "23:30 UTC is pre-dawn over India"
+
+    scn = insat.read_scan(REAL_INSAT, ("TIR1", "WV"))
+    native = {c: np.asarray(scn[c].values, dtype=np.float64) for c in ("TIR1", "WV")}
+    chk = insat.check_physics(native, metadata=meta)
+    assert chk.passed, chk.report()
+
+    # the resolution hierarchy the whole pipeline rests on
+    assert native["TIR1"].shape == (2816, 2805)
+    assert native["WV"].shape == (1408, 1402)
+    assert native["TIR1"].shape[0] == 2 * native["WV"].shape[0]

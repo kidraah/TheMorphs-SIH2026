@@ -314,6 +314,39 @@ Credentials come from a gitignored `.env` read through environment variables
 (`cp .env.example .env`). `nowcast_data.credentials.report()` shows what is
 set without ever printing a value.
 
+## Download gate — read before pulling anything in bulk
+
+> **No bulk MOSDAC download until `ingest_scan` passes on a real file, and
+> preferably on a current-version one.**
+>
+> satpy's `insat3d_img_l1b_h5` reader was written against older
+> EUMETSAT-provided samples. If MOSDAC's product format has drifted the
+> reader does **not** raise — it returns plausible arrays with wrong values.
+> Bulk-pulling first therefore risks days of unreadable data that looks
+> readable, and the arithmetic is unforgiving: ~400 MB/scan × 24 scans/day
+> ≈ 9.6 GB/day, ~1.2 TB per monsoon season, against ~271 GB free here.
+
+Status: a **2019 V01R00** file passes all checks (TIR1 180.1–330.6 K, WV
+179.9–277.7 K). The **current** product version is unverified — see
+[docs/INSAT_FORMAT_CHECK.md](docs/INSAT_FORMAT_CHECK.md) for the recorded
+baseline to diff against.
+
+Two configs, deliberately separate:
+
+| file | purpose |
+|---|---|
+| [`configs/mosdac_test.json`](configs/mosdac_test.json) | **the gate.** `count: 1`, empty bbox (full disk, so a geometry change cannot hide), recent monsoon afternoon 0800–0900 UTC so VIS/SWIR are lit |
+| [`configs/mosdac_bulk.json.template`](configs/mosdac_bulk.json.template) | **after the gate passes.** Event windows, India bbox (mandatory at this volume), `organize_by_date: true`, unlimited `count` |
+
+`datasetId` is confirmed as `3DIMG_L1B_STD` for 2019 but errors on 2026 dates;
+the test config lists `3SIMG_L1B_STD` (INSAT-3DS, operational Feb 2024) and
+`3DRIMG_L1B_STD` as the alternatives to try.
+
+Credentials are empty strings in every tracked config and read from the
+gitignored `.env`. Full shopping list, priority-ordered with sizes and what
+each unblocks: [docs/DOWNLOAD_MANIFEST.md](docs/DOWNLOAD_MANIFEST.md).
+IMERG specifics: [configs/imerg_fetch.md](configs/imerg_fetch.md).
+
 ## The judgment calls
 
 The formulas are exact. The numbers are dominated by the choices *around*
