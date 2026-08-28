@@ -89,14 +89,44 @@ def test_grid_is_equal_area_not_plate_carree():
 # INSAT sanity checks
 # --------------------------------------------------------------------------
 
-def _plausible_scan(seed=0):
+def _realistic_tir(shape=(80, 80), seed=0):
+    """A field whose PERCENTILES are plausible, not just its mean.
+
+    A constant 280 K array is not a valid TIR scan: its p1 and p99.9 are both
+    280, which the percentile checks correctly reject. Fixtures have to span
+    a realistic distribution now.
+    """
     rng = np.random.default_rng(seed)
-    return {"TIR1": rng.uniform(200, 300, (60, 60)),
-            "WV": rng.uniform(215, 260, (60, 60))}
+    a = rng.normal(281.0, 11.0, shape)          # surface + low/mid cloud
+    n = a.size // 9
+    idx = rng.choice(a.size, n, replace=False)
+    a.flat[idx] = rng.normal(208.0, 12.0, n)    # cold convective tops
+    return a
+    # deliberately NOT np.clip'd: clipping piles pixels at exactly the bound,
+    # which is a clamp, and the saturation check correctly flags it. That is
+    # how this fixture was caught the first time.
+
+
+def _realistic_wv(shape=(80, 80), seed=1):
+    rng = np.random.default_rng(seed)
+    return rng.normal(241.0, 11.0, shape)
+
+
+def _plausible_scan(seed=0):
+    return {"TIR1": _realistic_tir(seed=seed), "WV": _realistic_wv(seed=seed + 1)}
 
 
 def test_plausible_scan_passes():
-    assert insat.check_physics(_plausible_scan()).passed
+    chk = insat.check_physics(_plausible_scan())
+    assert chk.passed, chk.report()
+
+
+def test_the_fixture_is_actually_realistic():
+    """Guard: if the synthetic scan stops resembling real percentiles, the
+    checks above stop testing anything meaningful."""
+    a = _realistic_tir()
+    assert 185 <= np.percentile(a, 1) <= 245
+    assert 285 <= np.percentile(a, 99.9) <= 315
 
 
 def test_celsius_instead_of_kelvin_is_caught():
@@ -289,24 +319,27 @@ def test_reflective_channels_are_na_at_night_not_failed():
     """23:30 UTC is 05:00 IST. A dark VIS channel is correct behaviour, and
     scoring it FAIL would make every pre-dawn scan look broken."""
     meta = {"Sun_Elevation(Degrees)": -12.56}
-    arrays = {"TIR1": np.full((30, 30), 280.0),
+    arrays = {"TIR1": _realistic_tir(),
               "VIS": np.zeros((30, 30)), "SWIR": np.zeros((30, 30))}
     chk = insat.check_physics(arrays, metadata=meta)
     assert chk.passed, "night-time VIS must not fail the scan"
-    skipped = [r for r in chk.results if r.skipped]
-    assert {r.name.split()[0] for r in skipped} == {"VIS", "SWIR"}
+    reflective_skips = {r.name.split()[0] for r in chk.results
+                        if r.skipped and "extremes" not in r.name}
+    assert reflective_skips == {"VIS", "SWIR"}
     assert "N/A" in chk.report()
 
 
 def test_reflective_channels_are_checked_in_daylight():
     meta = {"Sun_Elevation(Degrees)": 62.0}
-    arrays = {"TIR1": np.full((30, 30), 280.0), "VIS": np.zeros((30, 30))}
+    arrays = {"TIR1": _realistic_tir(), "VIS": np.zeros((30, 30))}
     chk = insat.check_physics(arrays, metadata=meta)
-    assert not any(r.skipped for r in chk.results)
+    reflective_skips = [r for r in chk.results
+                        if r.skipped and r.name.startswith(("VIS", "SWIR"))]
+    assert not reflective_skips, "reflective checks must run when the sun is up"
 
 
 def test_illumination_is_reported_either_way():
-    chk = insat.check_physics({"TIR1": np.full((10, 10), 280.0)},
+    chk = insat.check_physics({"TIR1": _realistic_tir()},
                               metadata={"Sun_Elevation(Degrees)": -12.56})
     assert any("sun elevation" in r.detail for r in chk.results)
     assert insat.is_daylight({"Sun_Elevation(Degrees)": -12.56}) is False
@@ -316,8 +349,8 @@ def test_illumination_is_reported_either_way():
 
 def test_skipped_checks_do_not_mask_a_real_failure():
     meta = {"Sun_Elevation(Degrees)": -12.0}
-    chk = insat.check_physics({"TIR1": np.full((10, 10), 5.0),      # bad
-                               "VIS": np.zeros((10, 10))}, metadata=meta)
+    chk = insat.check_physics({"TIR1": np.full((30, 30), 5.0),      # bad
+                               "VIS": np.zeros((30, 30))}, metadata=meta)
     assert not chk.passed
 
 
@@ -326,19 +359,60 @@ def test_product_identity_is_reported_with_the_result():
     file passing says nothing about MOSDAC's current output."""
     meta = {"Software_Version": "1.0", "Product_Type": "STANDARD(FULL DISK)",
             "HDF_Product_File_Name": "3DIMG_25AUG2019_2330_L1B_STD.h5"}
-    txt = insat.check_physics({"TIR1": np.full((10, 10), 280.0)},
+    txt = insat.check_physics({"TIR1": _realistic_tir()},
                               metadata=meta).report()
     assert "Software_Version" in txt and "1.0" in txt
     assert "diff this against a current-version file" in txt
 
 
-def test_thresholds_admit_the_real_observed_range():
-    """Regression on our own calibration error: the textbook 190-320 K window
-    would have failed a valid full-disk scan (observed 180.1-330.6 K)."""
-    lo, hi = insat.EXPECTED_BT_K["TIR1"]
-    assert lo <= 180.09 and hi >= 330.56, "must admit the measured 2019 scan"
-    wlo, whi = insat.EXPECTED_BT_K["WV"]
-    assert wlo <= 179.89 and whi >= 277.68
+def test_checks_are_on_percentiles_not_extremes():
+    """Regression on a real mistake made on this project.
+
+    The absolute min/max of a valid scan are contaminated: TIR1's 330.6 K
+    maximum is scattered singleton noise 28 K above p99.99, and its 180.09 K
+    floor is the count->temperature LUT CLAMPING (LUT[-1] == LUT[-2]), which
+    is why WV independently 'bottoms out' at almost the same value despite
+    seeing only the upper troposphere.
+
+    Widening the bounds to admit those artefacts -- which is what was done
+    first -- fits the check to the data and defeats its purpose. The measured
+    robust percentiles must sit comfortably inside the bounds instead.
+    """
+    tir = insat.EXPECTED_BT_PERCENTILES["TIR1"]
+    lo, hi = tir[1.0]
+    assert lo <= 195.4 <= hi, "measured TIR1 p1"
+    lo, hi = tir[99.9]
+    assert lo <= 301.1 <= hi, "measured TIR1 p99.9"
+
+    wv = insat.EXPECTED_BT_PERCENTILES["WV"]
+    lo, hi = wv[1.0]
+    assert lo <= 209.7 <= hi, "measured WV p1"
+    lo, hi = wv[99.9]
+    assert lo <= 266.4 <= hi, "measured WV p99.9"
+
+    # and the contaminated extremes must NOT be admitted as valid values
+    assert not (tir[1.0][0] <= 180.09), "the LUT clamp must not be inside the bound"
+    assert not (tir[99.9][1] >= 330.56), "the noise spike must not be inside the bound"
+
+
+def test_lut_clamp_contamination_is_reported():
+    """A large spike of pixels at exactly one value is a clamp or an unmasked
+    fill, not signal -- the same class as the VIL byte-255 and int16 sentinel
+    bugs already found on this project."""
+    a = _realistic_tir((100, 100))
+    a[:40] = a.min()                     # 40% clamped at the floor
+    chk = insat.check_physics({"TIR1": a}, metadata={})
+    sat = [r for r in chk.results if "floor saturation" in r.name]
+    assert sat and not sat[0].passed
+    assert "LUT clamp" in sat[0].detail
+
+
+def test_extremes_are_reported_as_context_not_pass_fail():
+    a = _realistic_tir((50, 50))
+    a[0, 0] = 400.0                      # a single absurd pixel
+    chk = insat.check_physics({"TIR1": a}, metadata={})
+    ext = [r for r in chk.results if "extremes" in r.name]
+    assert ext and ext[0].skipped, "extremes must be context, never a verdict"
 
 
 # --------------------------------------------------------------------------

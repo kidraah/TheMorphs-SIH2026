@@ -29,26 +29,38 @@ from .grids import india_area
 INSAT_RESOLUTION_M = {"VIS": 1000, "SWIR": 1000, "MIR": 4000,
                       "TIR1": 4000, "TIR2": 4000, "WV": 8000}
 
-# Physically plausible brightness-temperature ranges (kelvin).
+# Brightness-temperature checks are on ROBUST PERCENTILES, not min/max.
 #
-# WIDENED against a real full-disk scan (3DIMG_25AUG2019_2330_L1B_STD_V01R00):
-# observed TIR1 180.09-330.56 K and WV 179.89-277.68 K. The textbook
-# 190-320 K window would have FAILED that entirely valid file. Full disk
-# reaches the Arabian and Saharan surface at local noon (>330 K) and
-# overshooting convective tops punch below the tropopause (<190 K), so the
-# operational envelope is wider than the tutorial figure.
+# Why not min/max: the absolute extremes of a real scan are contaminated two
+# ways, both measured on 3DIMG_25AUG2019_2330_L1B_STD_V01R00.
 #
-# TIR-1 is a window channel: warm surface and cold cloud tops, wide range.
-# WV is an absorption channel seeing only the upper troposphere, so it is
-# always cold and much narrower -- the same signature confirmed in SEVIR's
-# ir069 (-61.9 to -34.0 degC).
-EXPECTED_BT_K = {
-    "TIR1": (170.0, 345.0),
-    "TIR2": (170.0, 345.0),
-    "MIR": (170.0, 350.0),
-    "WV": (170.0, 290.0),
+#   * Scattered bad pixels at the warm end. TIR1 p99.9 = 301.1 K and
+#     p99.99 = 302.1 K, then a 28 K jump to a 330.6 K maximum held by
+#     ~0% of pixels, 62% of them isolated singletons. There is no warm
+#     region -- it is noise.
+#   * LUT saturation at the cold end. The count->temperature LUT is
+#     inverted and CLAMPS: LUT[-1] == LUT[-2] == 180.09 K for TIR1. So
+#     0.33% of finite pixels read exactly 180.09 K, and WV independently
+#     clamps at 179.89 K. The two channels sharing a floor is the clamp,
+#     not physics -- WV sees only the upper troposphere and its p0.1 is
+#     196.2 K, well above TIR1's.
+#
+# Widening the bounds to admit those extremes would fit the check to the
+# data and defeat its purpose. Bounding p1 and p99.9 instead keeps the
+# check meaningful while being immune to both artefacts.
+#
+# (percentile, (min_allowed, max_allowed)) in kelvin.
+EXPECTED_BT_PERCENTILES = {
+    "TIR1": {1.0: (185.0, 245.0), 99.9: (285.0, 315.0)},
+    "TIR2": {1.0: (185.0, 245.0), 99.9: (285.0, 315.0)},
+    "MIR": {1.0: (185.0, 250.0), 99.9: (285.0, 325.0)},
+    "WV": {1.0: (200.0, 235.0), 99.9: (255.0, 280.0)},
 }
-BT_CHANNELS = tuple(EXPECTED_BT_K)
+BT_CHANNELS = tuple(EXPECTED_BT_PERCENTILES)
+
+# Fraction of finite pixels allowed to sit exactly at the observed extreme
+# before it is reported as saturation/fill contamination rather than signal.
+MAX_SATURATED_FRAC = 0.02
 
 # Reflective channels. Meaningless at night, so they are reported N/A rather
 # than FAIL when the sun is down -- see solar_elevation() below.
@@ -183,24 +195,41 @@ def check_physics(arrays: dict, min_valid_frac: float = 0.05,
             chk.add(f"{name} range", False, "no finite pixels to check")
             continue
 
-        lo, hi = np.nanmin(a), np.nanmax(a)
-        if name in EXPECTED_BT_K:
-            elo, ehi = EXPECTED_BT_K[name]
-            ok = lo >= elo and hi <= ehi
-            chk.add(f"{name} range", ok,
-                    f"{lo:.1f}-{hi:.1f} K (expected {elo:.0f}-{ehi:.0f} K)"
-                    + ("" if ok else "  <-- wrong units, calibration, or format drift"))
+        v = a[finite]
+        if name in EXPECTED_BT_PERCENTILES:
+            for q, (elo, ehi) in EXPECTED_BT_PERCENTILES[name].items():
+                got = float(np.percentile(v, q))
+                ok = elo <= got <= ehi
+                chk.add(f"{name} p{q:g}", ok,
+                        f"{got:.1f} K (expected {elo:.0f}-{ehi:.0f} K)"
+                        + ("" if ok else "  <-- wrong units, calibration, or format drift"))
 
-    # The window/absorption contrast: WV must be colder and narrower than TIR1.
+            # Report the raw extremes as context, never as a pass/fail.
+            chk.add(f"{name} extremes", True,
+                    f"min {v.min():.1f} / max {v.max():.1f} K (context only -- "
+                    f"contaminated by LUT clamping and bad pixels)", skipped=True)
+
+            # LUT clamping / fill contamination at either end.
+            for end, val in (("floor", v.min()), ("ceiling", v.max())):
+                frac = float((v == val).mean())
+                chk.add(f"{name} {end} saturation", frac <= MAX_SATURATED_FRAC,
+                        f"{100 * frac:.3f}% of finite pixels sit exactly at "
+                        f"{val:.2f} K"
+                        + ("" if frac <= MAX_SATURATED_FRAC
+                           else "  <-- LUT clamp or unmasked fill value"))
+
+    # The window/absorption contrast, on percentiles for the same reason.
     if "TIR1" in arrays and "WV" in arrays:
         t, w = np.asarray(arrays["TIR1"]), np.asarray(arrays["WV"])
-        if np.isfinite(t).any() and np.isfinite(w).any():
-            tspan = float(np.nanmax(t) - np.nanmin(t))
-            wspan = float(np.nanmax(w) - np.nanmin(w))
+        tf, wf = t[np.isfinite(t)], w[np.isfinite(w)]
+        if tf.size and wf.size:
+            tspan = float(np.percentile(tf, 99) - np.percentile(tf, 1))
+            wspan = float(np.percentile(wf, 99) - np.percentile(wf, 1))
             chk.add("WV narrower than TIR1", wspan < tspan,
-                    f"WV span {wspan:.1f} K vs TIR1 span {tspan:.1f} K")
-            chk.add("WV colder than TIR1", np.nanmax(w) < np.nanmax(t),
-                    f"WV max {np.nanmax(w):.1f} K vs TIR1 max {np.nanmax(t):.1f} K")
+                    f"WV p1-p99 span {wspan:.1f} K vs TIR1 {tspan:.1f} K")
+            tmed, wmed = float(np.median(tf)), float(np.median(wf))
+            chk.add("WV colder than TIR1", wmed < tmed,
+                    f"WV median {wmed:.1f} K vs TIR1 median {tmed:.1f} K")
     return chk
 
 

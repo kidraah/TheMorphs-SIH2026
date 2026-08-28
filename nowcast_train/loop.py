@@ -183,8 +183,12 @@ def train(model: MultiTaskNowcaster, train_ds, val_ds, config: TrainConfig,
         else:
             print(f"  no improvement ({name} {score:.4f} <= best {best:.4f})")
 
-        result[list(result.names)[0]].to_json(
-            str(cfg.run_dir / f"epoch{epoch:03d}.json"))
+        # ALL heads, every epoch. Saving only the first head made the
+        # threshold sweep look rain_rate-only and hid that the rare heads had
+        # real skill below the 0.5 operating point.
+        for hname in result.names:
+            result[hname].to_json(
+                str(cfg.run_dir / f"epoch{epoch:03d}_{hname}.json"))
         previous = result
 
     return {"best_score": best, "run_dir": str(cfg.run_dir)}
