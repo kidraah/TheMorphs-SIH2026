@@ -20,6 +20,25 @@ is a number with no meaning, and it would hide exactly the failure this
 module exists to catch. Where a single number is unavoidable (checkpoint
 selection) `worst_head` is offered instead -- the conservative choice,
 which cannot be gamed by one head carrying the others.
+
+Which metric to take the worst OF
+---------------------------------
+Not CSI. CSI is not comparable across heads: it falls with the base rate
+whatever the forecast quality (a fixed-quality forecast scores 0.55 at a
+1e-1 base rate and 0.0016 at 1e-4), so `min` over CSI would pick the
+rarest hazard every single time regardless of how well any head performs.
+That is a constant, not a signal.
+
+Use SEDI. It is base-rate independent, which is exactly the property that
+makes a cross-head minimum mean something. CSI stays worth reporting for
+the thunderstorm head, where the base rate supports it -- but it is a
+reporting metric there, not a selection metric.
+
+And select on the CI LOWER BOUND, not the point estimate. At a 2e-4 base
+rate the point estimate is noise-dominated, so choosing epochs on it is
+choosing on luck: the checkpoint that wins is the one whose validation set
+happened to break its way. The lower bound asks the stricter question --
+what can we actually defend? -- and cannot be won by a lucky draw.
 """
 from __future__ import annotations
 
@@ -53,18 +72,61 @@ class MultiHazardResult:
 
     # --- single numbers, chosen carefully ---------------------------------
     def headline(self, metric: str = "csi") -> dict[str, float]:
-        return {k: v.pooled["headline"].get(metric, np.nan)
-                if metric in v.pooled["headline"]
-                else v.pooled["probabilistic"].get(metric, np.nan)
-                for k, v in self.hazards.items()}
+        out = {}
+        for k, v in self.hazards.items():
+            if metric in v.pooled["headline"]:
+                out[k] = v.pooled["headline"][metric]
+            else:
+                out[k] = v.pooled["probabilistic"].get(metric, np.nan)
+        return out
 
-    def worst_head(self, metric: str = "csi") -> tuple[str, float]:
-        """The conservative checkpoint metric: the head doing worst.
+    def worst_head(self, metric: str = "sedi") -> tuple[str, float]:
+        """The head doing worst, on a base-rate-independent metric.
 
-        Optimising this means a run cannot win by sacrificing the rare
-        hazards for the common one.
+        Defaults to SEDI. Passing metric="csi" here is almost always a
+        mistake -- see the module docstring: CSI's base-rate dependence
+        makes the minimum select the rarest hazard by construction.
         """
         vals = {k: v for k, v in self.headline(metric).items() if np.isfinite(v)}
+        if not vals:
+            return ("", float("nan"))
+        k = min(vals, key=vals.get)
+        return (k, vals[k])
+
+    def worst_head_lower_bound(self, metric: str = "sedi") -> tuple[str, float]:
+        """The checkpoint metric: worst head's LOWER confidence bound.
+
+        Requires `attach_confidence_intervals` to have been run on each
+        head first. Selecting on the point estimate of a rare-event score
+        is selecting on sampling noise -- the winning epoch is the one
+        whose validation draw was luckiest, which does not generalise.
+
+        Raises rather than silently falling back to the point estimate: a
+        checkpoint metric that quietly changes meaning is worse than one
+        that fails loudly.
+        """
+        missing = [k for k, v in self.hazards.items() if "ci" not in v.pooled]
+        if missing:
+            raise ValueError(
+                f"no confidence intervals on: {', '.join(missing)}. Run "
+                f"attach_confidence_intervals(result[hazard], pred, obs, cfg) "
+                f"for each head before checkpointing on the lower bound."
+            )
+        vals, undefined = {}, []
+        for k, v in self.hazards.items():
+            lo = v.pooled["ci"]["lo"].get(metric, np.nan)
+            if lo is None or not np.isfinite(lo):
+                undefined.append(k)
+            else:
+                vals[k] = float(lo)
+
+        # A head whose score is undefined must rank WORST, never be skipped.
+        # Dropping it silently is the exact failure this module exists to
+        # prevent: selection would report a healthy number while blind to a
+        # head -- and the blind one is always the rarest, most important
+        # hazard, because that is where the evidence runs out first.
+        if undefined:
+            return (undefined[0], float("-inf"))
         if not vals:
             return ("", float("nan"))
         k = min(vals, key=vals.get)
@@ -74,17 +136,41 @@ class MultiHazardResult:
     def summary_table(self) -> str:
         lines = ["=" * 78, "MULTI-HAZARD SCORECARD", "=" * 78, ""]
         hdr = (f"{'hazard':>14} {'base rate':>11} {'events':>9} "
-               f"{'CSI':>7} {'POD':>7} {'FAR':>7} {'BSS':>8}")
+               f"{'SEDI':>16} {'CSI':>7} {'POD':>7} {'FAR':>7} {'BSS':>8}")
         lines += [hdr, "-" * len(hdr)]
         for name, r in self.hazards.items():
             h = r.pooled["headline"]
             events = h["hits"] + h["misses"]
+            ci = r.pooled.get("ci")
+            if ci and np.isfinite(ci["lo"].get("sedi", np.nan)):
+                sedi = f"{h['sedi']:.3f}[{ci['lo']['sedi']:.2f},{ci['hi']['sedi']:.2f}]"
+            else:
+                sedi = f"{h['sedi']:.3f}"
             lines.append(f"{name:>14} {r.pooled['base_rate']:>11.2e} {events:>9d} "
+                         f"{sedi:>16} "
                          f"{h['csi']:>7.3f} {h['pod']:>7.3f} {h['far']:>7.3f} "
                          f"{r.pooled['probabilistic']['bss']:>8.3f}")
-        w, v = self.worst_head()
-        lines += ["", f"worst head: {w} (CSI {v:.3f}) <- checkpoint on this, "
-                      f"not on the mean"]
+
+        lines.append("")
+        try:
+            w, v = self.worst_head_lower_bound("sedi")
+            if v == float("-inf"):
+                lines.append(f"CHECKPOINT BLOCKED: {w} SEDI is undefined -- too few "
+                             f"events to measure it. Do not checkpoint while a head "
+                             f"is unmeasurable; widen the test set or lower the "
+                             f"threshold for that head.")
+            else:
+                lines.append(f"CHECKPOINT ON: {w} SEDI lower bound = {v:.3f}")
+            wp, vp = self.worst_head("sedi")
+            if np.isfinite(vp):
+                lines.append(f"    (point estimate would pick {wp} at {vp:.3f} -- "
+                             f"noise-dominated at these base rates)")
+        except ValueError:
+            w, v = self.worst_head("sedi")
+            lines.append(f"worst head: {w} (SEDI {v:.3f}) -- point estimate only; "
+                         f"attach CIs and checkpoint on the lower bound instead")
+        lines.append("    CSI shown for reporting; it is not comparable across "
+                     "heads (base-rate dependent)")
 
         thin = [n for n, r in self.hazards.items()
                 if (r.pooled["headline"]["hits"] + r.pooled["headline"]["misses"]) < 100]
@@ -96,7 +182,7 @@ class MultiHazardResult:
             lines += [f"--- {name} " + "-" * (70 - len(name)), r.summary_table(), ""]
         return "\n".join(lines)
 
-    def compare(self, previous: "MultiHazardResult", metric: str = "csi",
+    def compare(self, previous: "MultiHazardResult", metric: str = "sedi",
                 tol: float = 0.005) -> str:
         """Did any head regress since the last epoch/run?
 

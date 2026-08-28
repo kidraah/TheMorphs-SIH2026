@@ -154,11 +154,27 @@ def test_warns_on_too_few_cases():
     assert any("forecast cases" in w for w in ci.warnings)
 
 
-def test_warns_when_interval_too_wide_to_rank_models():
+def test_warns_when_interval_is_wide_relative_to_the_estimate():
+    """Rare-event CSI is small in absolute terms, so its interval is small
+    too. An absolute-width rule never fires on exactly the hazards that need
+    it -- the warning must be relative to the point estimate."""
     pred, obs = _data(n=25, h=12, w=12, rate=0.004, seed=13)
     ci = bootstrap_ci(pred, obs, EvalConfig(), n_boot=300)
-    if np.isfinite(ci.hi["csi"] - ci.lo["csi"]) and ci.hi["csi"] - ci.lo["csi"] > 0.2:
-        assert any("too wide" in w for w in ci.warnings)
+    width, pt = ci.hi["csi"] - ci.lo["csi"], ci.point["csi"]
+
+    assert width < 0.2, "fixture must NOT trip the absolute rule, or this proves nothing"
+    assert width / pt > 0.5, f"fixture must be wide relative to {pt:.4f}, got {width:.4f}"
+    assert any("% of the value" in w for w in ci.warnings)
+
+
+def test_absolute_width_rule_still_fires_for_common_events():
+    rng = np.random.default_rng(0)
+    n, h, w = 6, 10, 10
+    obs = (rng.random((n, h, w)) < 0.3).astype(float)
+    pred = rng.random((n, h, w))
+    ci = bootstrap_ci(pred, obs, EvalConfig(), n_boot=300)
+    if ci.hi["csi"] - ci.lo["csi"] > 0.2:
+        assert any("too wide" in x for x in ci.warnings)
 
 
 # --------------------------------------------------------------------------
@@ -242,3 +258,134 @@ def test_correlated_lead_times_do_not_shrink_the_interval():
         return ci.hi["csi"] - ci.lo["csi"]
 
     assert width(8) == pytest.approx(width(1), abs=1e-9)
+
+
+# --------------------------------------------------------------------------
+# Blocking one level further out: cases that share a storm day
+# --------------------------------------------------------------------------
+
+def _day_clustered(n_days=10, per_day=6, h=16, w=16, seed=0):
+    """Windows cut from a small number of storm days.
+
+    Every window from a day is IDENTICAL here, which is the extreme of the
+    real situation: windows from one synoptic setup carry nearly the same
+    information. Effective sample size is the day count, not the window count.
+    """
+    rng = np.random.default_rng(seed)
+    days_o = (rng.random((n_days, h, w)) < 0.04).astype(float)
+    days_p = np.where(days_o > 0, rng.uniform(0.2, 1.0, days_o.shape),
+                      rng.uniform(0.0, 0.8, days_o.shape))
+    obs = np.repeat(days_o, per_day, axis=0)
+    pred = np.repeat(days_p, per_day, axis=0)
+    groups = np.repeat(np.arange(n_days), per_day)
+    return pred, obs, groups
+
+
+def test_grouped_bootstrap_reports_blocks_not_cases():
+    pred, obs, groups = _day_clustered(n_days=10, per_day=6)
+    ci = bootstrap_ci(pred, obs, EvalConfig(), n_boot=200, groups=groups)
+    assert ci.n_samples == 60
+    assert ci.n_blocks == 10, "must resample days, not windows"
+
+
+def test_duplicating_cases_within_a_day_does_not_shrink_the_interval():
+    """Parallel to the lead-time test, one level further out.
+
+    Six copies of each storm day carry no more information than one copy.
+    With day blocking the interval must be unchanged; without it, the
+    interval wrongly narrows.
+    """
+    cfg = EvalConfig()
+    p1, o1, g1 = _day_clustered(n_days=12, per_day=1, seed=3)
+    p6, o6, g6 = _day_clustered(n_days=12, per_day=6, seed=3)
+
+    blocked_1 = bootstrap_ci(p1, o1, cfg, n_boot=400, seed=1, groups=g1)
+    blocked_6 = bootstrap_ci(p6, o6, cfg, n_boot=400, seed=1, groups=g6)
+    w1 = blocked_1.hi["csi"] - blocked_1.lo["csi"]
+    w6 = blocked_6.hi["csi"] - blocked_6.lo["csi"]
+    assert w6 == pytest.approx(w1, abs=1e-9), (
+        f"day-blocked interval must ignore duplication: {w1:.4f} vs {w6:.4f}")
+
+    # and the unblocked version demonstrably understates it
+    naive = bootstrap_ci(p6, o6, cfg, n_boot=400, seed=1)
+    w_naive = naive.hi["csi"] - naive.lo["csi"]
+    assert w_naive < w1 * 0.8, (
+        f"ignoring day structure must visibly narrow the interval "
+        f"({w_naive:.4f} vs correct {w1:.4f}) -- this is the failure mode")
+
+
+def test_warns_when_blocks_collapse_far_below_case_count():
+    pred, obs, groups = _day_clustered(n_days=5, per_day=20)
+    ci = bootstrap_ci(pred, obs, EvalConfig(), n_boot=200, groups=groups)
+    assert any("collapse to" in w for w in ci.warnings)
+
+
+def test_warns_when_independence_is_merely_assumed():
+    """No `groups` given is an assertion of independence. Say so."""
+    pred, obs = _data(n=40)
+    ci = bootstrap_ci(pred, obs, EvalConfig(), n_boot=100)
+    assert any("assumed independent" in w for w in ci.warnings)
+
+
+def test_groups_length_is_validated():
+    pred, obs = _data(n=20)
+    with pytest.raises(ValueError, match="groups has"):
+        bootstrap_ci(pred, obs, EvalConfig(), n_boot=50, groups=np.arange(5))
+
+
+def test_attach_passes_groups_to_every_lead():
+    rng = np.random.default_rng(0)
+    obs = (rng.random((24, 3, 16, 16)) < 0.04).astype(float)
+    pred = np.where(obs > 0, rng.uniform(0.2, 1.0, obs.shape),
+                    rng.uniform(0.0, 0.8, obs.shape))
+    cfg = EvalConfig()
+    groups = np.repeat(np.arange(6), 4)
+    r = evaluate(pred, obs, cfg, lead_minutes=[30, 60, 120])
+    attach_confidence_intervals(r, pred, obs, cfg, n_boot=100, groups=groups)
+    assert r.pooled["ci"]["n_blocks"] == 6
+    assert all(l.ci["n_blocks"] == 6 for l in r.per_lead)
+
+
+# --------------------------------------------------------------------------
+# SEDI
+# --------------------------------------------------------------------------
+
+def test_sedi_is_base_rate_independent_where_csi_is_not():
+    """The justification for using SEDI on the cloudburst head.
+
+    Hold forecast quality fixed (POD ~0.8, false alarm rate ~0.05) and vary
+    the base rate over three orders of magnitude. CSI collapses; SEDI holds.
+    """
+    csis, sedis = [], []
+    for rate in (1e-1, 1e-2, 1e-3):
+        rng = np.random.default_rng(0)
+        n = 2_000_000
+        obs = rng.random(n) < rate
+        pred = np.where(obs, rng.random(n) < 0.8, rng.random(n) < 0.05).astype(float)
+        t = contingency(pred, obs, 0.5)
+        csis.append(t.csi)
+        sedis.append(t.sedi)
+
+    assert csis[0] / csis[-1] > 20, f"CSI must collapse with base rate, got {csis}"
+    assert max(sedis) - min(sedis) < 0.05, f"SEDI must hold, got {sedis}"
+
+
+def test_sedi_is_undefined_for_a_perfect_forecast():
+    """F = 0 makes log(F) undefined. A real limitation, documented not hidden."""
+    _, obs = _data()
+    assert np.isnan(contingency(obs, obs, 0.5).sedi)
+
+
+def test_sedi_is_zero_for_a_random_forecast():
+    """No skill means hit rate == false alarm rate, which gives SEDI 0."""
+    rng = np.random.default_rng(0)
+    n = 2_000_000
+    obs = rng.random(n) < 0.01
+    pred = (rng.random(n) < 0.3).astype(float)   # fires independently of obs
+    assert contingency(pred, obs, 0.5).sedi == pytest.approx(0.0, abs=0.01)
+
+
+def test_bootstrap_sedi_matches_direct_computation():
+    pred, obs = _data()
+    ci = bootstrap_ci(pred, obs, EvalConfig(), n_boot=50)
+    assert ci.point["sedi"] == pytest.approx(contingency(pred, obs, 0.5).sedi)

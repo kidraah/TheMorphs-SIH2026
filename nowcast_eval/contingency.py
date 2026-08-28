@@ -70,6 +70,14 @@ class ContingencyTable:
         return _safe_div(self.false_alarms, self.hits + self.false_alarms)
 
     @property
+    def false_alarm_rate(self) -> float:
+        """b / (b + d) -- the ROC x-axis, NOT the false alarm ratio above.
+
+        Distinct quantity, confusingly similar name. SEDI needs this one.
+        """
+        return _safe_div(self.false_alarms, self.false_alarms + self.correct_negatives)
+
+    @property
     def success_ratio(self) -> float:
         """1 - FAR = precision."""
         far = self.far
@@ -104,6 +112,38 @@ class ContingencyTable:
         return _safe_div(self.hits - hits_random, den)
 
     @property
+    def sedi(self) -> float:
+        """Symmetric Extremal Dependence Index (Ferro & Stephenson 2011).
+
+        The rare-event metric. CSI degenerates toward zero as the base rate
+        falls, whatever the forecast quality -- at 2e-4 it cannot separate
+        "no skill" from "real skill on something genuinely rare", which
+        makes it useless for the cloudburst head. SEDI is base-rate
+        independent in the limit, so it stays interpretable there.
+
+            SEDI = [ln F - ln H - ln(1-F) + ln(1-H)]
+                 / [ln F + ln H + ln(1-F) + ln(1-H)]
+
+        with H the hit rate (POD) and F the false alarm RATE (b/(b+d)).
+        Range -1 to 1; 0 is no skill, 1 is perfect.
+
+        Undefined (nan) when H or F hits 0 or 1 -- including for a perfect
+        forecast, where F = 0. That is a real limitation, not a bug: with
+        very few events a single threshold can push F to 0 and the score
+        vanishes. Report it alongside the event count, and prefer a lower
+        threshold over reading nan as failure.
+        """
+        h = self.pod
+        f = self.false_alarm_rate
+        if not (np.isfinite(h) and np.isfinite(f)):
+            return float("nan")
+        if h <= 0.0 or h >= 1.0 or f <= 0.0 or f >= 1.0:
+            return float("nan")
+        num = np.log(f) - np.log(h) - np.log(1 - f) + np.log(1 - h)
+        den = np.log(f) + np.log(h) + np.log(1 - f) + np.log(1 - h)
+        return float("nan") if den == 0 else float(num / den)
+
+    @property
     def hss(self) -> float:
         """Heidke skill score: accuracy improvement over random chance."""
         a, b, c, d = self.hits, self.false_alarms, self.misses, self.correct_negatives
@@ -121,6 +161,8 @@ class ContingencyTable:
             "base_rate": self.base_rate,
             "pod": self.pod,
             "far": self.far,
+            "false_alarm_rate": self.false_alarm_rate,
+            "sedi": self.sedi,
             "success_ratio": self.success_ratio,
             "csi": self.csi,
             "frequency_bias": self.frequency_bias,

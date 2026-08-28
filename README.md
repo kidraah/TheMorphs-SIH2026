@@ -46,7 +46,8 @@ r.to_json("artifacts/run017.json")
 | **Probabilistic** | Brier, Brier skill score vs climatology, reliability curve |
 | **Baselines** | persistence, climatology, pySTEPS optical-flow extrapolation (optional) |
 | **Multi-hazard** | all three MTL heads through one code path, with per-head regression detection |
-| **Uncertainty** | bootstrap 95% CIs over forecast cases, plus a significance test for model comparison |
+| **Uncertainty** | bootstrap 95% CIs, day-blocked, plus a significance test for model comparison |
+| **Rare events** | SEDI — base-rate independent, for heads where CSI degenerates |
 
 Everything is broken out **per lead time**. A pooled number hides the only
 thing that matters: where skill dies.
@@ -85,13 +86,38 @@ all.
 
 Two design points, both tested:
 
-- **The resampling unit is the forecast case**, never the pixel and never
-  the `(case, lead)` pair. Pixels in one storm and lead times of one storm
-  are correlated; resampling them independently produces intervals roughly
-  an order of magnitude too tight, which is worse than none because it
-  looks rigorous.
+- **The resampling unit is the independent block**, never the pixel, the
+  `(case, lead)` pair, or — when windows come from a shared storm day —
+  the case. Pass `groups=day` and whole days are resampled together. Each
+  level of correlation ignored makes the interval too tight, and the day
+  level is the least visible: 400 windows from 12 storm days will report a
+  confident interval that is wrong by a factor of several. Omitting
+  `groups` asserts independence, and the harness says so in its warnings.
 - Replicates are computed from per-case **sufficient statistics**, so 1000
   of them cost about one extra evaluation — and are exact, not approximate.
+
+## Checkpoint selection
+
+```python
+score = result.worst_head_lower_bound("sedi")[1]   # not the mean, not CSI, not the point estimate
+```
+
+Three choices, each of which changes which epoch you keep:
+
+- **Worst head, not the mean** — an average is gameable by trading the rare
+  hazards for the common one.
+- **SEDI, not CSI** — at identical forecast quality across heads, CSI
+  spreads >8× and ranks the rarest head worst every time. A CSI minimum is
+  a base-rate detector, not a quality detector.
+- **Lower confidence bound, not the point estimate** — at a 2e-4 base rate
+  the point estimate is noise, and selecting on it picks the epoch whose
+  validation draw was luckiest.
+
+A head too thin to measure returns `-inf` and **blocks** checkpointing
+rather than being dropped from the minimum. Dropping it would report a
+healthy score while blind to a head — and it is always the rarest, most
+important hazard that goes blind first, because that is where the evidence
+runs out.
 
 ## The judgment calls
 
@@ -112,7 +138,7 @@ in every result — rather than buried in the code:
 
 ## Validation
 
-`tests/` (57 tests) proves the ruler is straight by known-answer testing,
+`tests/` (76 tests) proves the ruler is straight by known-answer testing,
 not by eyeballing plausibility:
 
 - perfect forecast → POD 1, FAR 0, CSI 1, Brier 0 **exactly**
@@ -131,6 +157,15 @@ not by eyeballing plausibility:
 - pooled CIs report N cases, not N×L case-lead pairs; duplicating a case
   across more lead times must not narrow the interval
 - a regressed MTL head is flagged even when the other two improve
+- SEDI holds across three orders of magnitude of base rate where CSI
+  collapses by >20x; SEDI is 0 for a random forecast and `nan` (not 1) for
+  a perfect one, where its false-alarm-rate term is undefined
+- day-blocked intervals ignore duplicated cases within a day, and the
+  unblocked version demonstrably narrows — the failure mode, pinned
+- every fixture is checked to be capable of failing: `test_fixture_is_honest`
+  asserts the quality knob is monotone and produces real misses and false
+  alarms, after an earlier version seeded from `hash()` (randomised per
+  process) with an inverted quality parameter and passed regardless
 
 ## Training
 

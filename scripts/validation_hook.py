@@ -81,14 +81,30 @@ def checkpoint_metric(result) -> float:
 
 
 def multi_head_checkpoint_metric(multi_result) -> float:
-    """Checkpoint metric for the three-head model: the WORST head.
+    """Checkpoint metric for the three-head model.
 
-    Not the mean. Base rates differ by two orders of magnitude, so an
-    average is both meaningless and gameable -- a run can improve it by
-    getting better at thunderstorms while losing cloudbursts entirely,
-    which is the one outcome the project cannot accept.
+    Three deliberate choices, each of which changes which epoch you keep:
+
+    1. The WORST head, not the mean. An average is gameable -- a run can
+       improve it by getting better at thunderstorms while losing
+       cloudbursts entirely, the one outcome the project cannot accept.
+
+    2. SEDI, not CSI. CSI falls with the base rate whatever the forecast
+       quality: at identical quality across heads it spreads more than 8x
+       and ranks the rarest head worst every time. A CSI minimum is a
+       base-rate detector. SEDI is base-rate independent, so the minimum
+       means something.
+
+    3. The LOWER CONFIDENCE BOUND, not the point estimate. At a 2e-4 base
+       rate the point estimate is noise; selecting on it selects the epoch
+       whose validation draw was luckiest, which does not generalise. The
+       lower bound asks what you can defend.
+
+    Requires attach_confidence_intervals() on each head first. Returns
+    -inf if any head is unmeasurable -- that blocks checkpointing rather
+    than quietly selecting on the heads that happen to have data.
     """
-    _, value = multi_result.worst_head("csi")
+    _, value = multi_result.worst_head_lower_bound("sedi")
     return value
 
 
@@ -104,7 +120,9 @@ def training_loop_sketch():
             loss.backward(); opt.step(); opt.zero_grad()
 
         result = evaluate_multi(preds, obss, cfgs, LEAD_MINUTES)
-        attach_confidence_intervals(result["cloudburst"], ...)  # rare head
+        for h in result.names:               # groups = storm day per case
+            attach_confidence_intervals(result[h], preds[h], obss[h],
+                                        cfgs[h], groups=val_days)
         print(result.summary_table())        # <- decisions come from HERE
         print(result.compare(last_epoch))    # <- did any head regress?
         score = multi_head_checkpoint_metric(result)

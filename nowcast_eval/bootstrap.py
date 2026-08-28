@@ -98,6 +98,17 @@ def collect_stats(pred, obs, threshold, cfg: EvalConfig, mask=None) -> PerSample
     return st
 
 
+def _sedi(h: float, f: float) -> float:
+    """SEDI from hit rate and false alarm rate. See contingency.sedi."""
+    if not (np.isfinite(h) and np.isfinite(f)):
+        return np.nan
+    if h <= 0.0 or h >= 1.0 or f <= 0.0 or f >= 1.0:
+        return np.nan
+    num = np.log(f) - np.log(h) - np.log(1 - f) + np.log(1 - h)
+    den = np.log(f) + np.log(h) + np.log(1 - f) + np.log(1 - h)
+    return np.nan if den == 0 else float(num / den)
+
+
 def _metrics_from_sums(st: PerSampleStats, idx: np.ndarray, kms) -> dict:
     """Pool the resampled cases and form every ratio. All exact."""
     a = st.hits[idx].sum()
@@ -110,6 +121,7 @@ def _metrics_from_sums(st: PerSampleStats, idx: np.ndarray, kms) -> dict:
     def div(x, y):
         return float(x) / float(y) if y > 0 else np.nan
 
+    d = n - a - b - c            # correct negatives, for the false alarm RATE
     base = div(ev, n)
     bs = div(se, n)
     bs_clim = base * (1.0 - base) if np.isfinite(base) else np.nan
@@ -121,6 +133,7 @@ def _metrics_from_sums(st: PerSampleStats, idx: np.ndarray, kms) -> dict:
         "bss": (np.nan if not np.isfinite(bs_clim) or bs_clim == 0
                 else 1.0 - bs / bs_clim),
         "base_rate": base,
+        "sedi": _sedi(div(a, a + c), div(b, b + d)),
     }
     for km in kms:
         num = st.fss_diff[km][idx].sum()
@@ -135,15 +148,17 @@ class CIResult:
     lo: dict             # metric -> lower percentile
     hi: dict             # metric -> upper percentile
     n_events: int
-    n_samples: int
+    n_samples: int       # forecast cases
     n_boot: int
     alpha: float
     warnings: list
+    n_blocks: int = 0    # independent units actually resampled (days, if grouped)
 
     def to_dict(self) -> dict:
         return {
             "point": self.point, "lo": self.lo, "hi": self.hi,
             "n_events": self.n_events, "n_samples": self.n_samples,
+            "n_blocks": self.n_blocks,
             "n_boot": self.n_boot, "alpha": self.alpha,
             "warnings": self.warnings,
         }
@@ -155,6 +170,17 @@ class CIResult:
         return f"{p:.{places}f} [{lo:.{places}f}, {hi:.{places}f}]"
 
 
+def _block_members(groups: np.ndarray | None, n: int) -> list[np.ndarray] | None:
+    """Index lists, one per block. None means every case is its own block."""
+    if groups is None:
+        return None
+    g = np.asarray(groups)
+    if g.shape[0] != n:
+        raise ValueError(f"groups has {g.shape[0]} entries, expected {n}")
+    _, inv = np.unique(g, return_inverse=True)
+    return [np.flatnonzero(inv == k) for k in range(inv.max() + 1)]
+
+
 def bootstrap_ci(
     pred: np.ndarray,
     obs: np.ndarray,
@@ -164,6 +190,7 @@ def bootstrap_ci(
     n_boot: int = 1000,
     alpha: float = 0.05,
     seed: int = 0,
+    groups: np.ndarray | None = None,
 ) -> CIResult:
     """Percentile bootstrap CIs over forecast cases.
 
@@ -174,6 +201,24 @@ def bootstrap_ci(
     warnings when the sample is too thin for the interval itself to be
     trusted -- a CI computed from 8 cases is not a safeguard, it is a
     second thing that can mislead you.
+
+    `groups`
+    --------
+    One label per case naming the independent unit it belongs to -- in
+    practice the storm DAY. Event windows cut from the same day share a
+    synoptic setup: the same airmass, the same instability, the same
+    forcing. They are not independent draws, so the effective sample size
+    is the number of days, not the number of windows. Pass the day and the
+    bootstrap resamples whole days, keeping every window from a drawn day
+    together.
+
+    This is the same non-independence already handled for pixels within a
+    case and for lead times within a case, one level further out, and it is
+    the least visible of the three: 400 windows from 12 storm days will
+    happily report a tight interval that is off by a factor of several.
+    Omitting `groups` asserts the cases really are independent -- true for
+    the synthetic demos, almost never true for SEVIR or INSAT event
+    catalogues.
     """
     cfg = config or EvalConfig()
     t = cfg.headline_threshold if threshold is None else threshold
@@ -190,10 +235,17 @@ def bootstrap_ci(
     point = _metrics_from_sums(st, all_idx, kms)
     n_events = int(st.events.sum())
 
+    members = _block_members(groups, N)
+    n_blocks = N if members is None else len(members)
+
     rng = np.random.default_rng(seed)
     reps = {k: np.empty(n_boot) for k in point}
     for i in range(n_boot):
-        idx = rng.integers(0, N, size=N)
+        if members is None:
+            idx = rng.integers(0, N, size=N)
+        else:
+            drawn = rng.integers(0, n_blocks, size=n_blocks)
+            idx = np.concatenate([members[d] for d in drawn])
         m = _metrics_from_sums(st, idx, kms)
         for k, v in m.items():
             reps[k][i] = v
@@ -208,19 +260,37 @@ def bootstrap_ci(
             hi[k] = float(np.percentile(good, 100 * (1 - alpha / 2)))
 
     warns = []
-    if N < 20:
-        warns.append(f"only {N} forecast cases -- the bootstrap itself is unreliable "
-                     f"below ~20 cases; widen the test set before trusting these bounds")
+    unit = "independent blocks" if members is not None else "forecast cases"
+    if n_blocks < 20:
+        warns.append(f"only {n_blocks} {unit} -- the bootstrap itself is unreliable "
+                     f"below ~20; widen the test set before trusting these bounds")
+    if members is not None and n_blocks < N / 3:
+        warns.append(f"{N} cases collapse to {n_blocks} independent blocks -- "
+                     f"effective sample size is far below the case count")
+    if members is None and N >= 20:
+        warns.append("cases assumed independent (no `groups` given) -- if these "
+                     "windows come from a smaller set of storm days, pass the day "
+                     "as `groups` or this interval is too narrow")
     if n_events < 100:
         warns.append(f"only {n_events} observed events -- point estimates are "
                      f"dominated by sampling noise")
     if np.isfinite(point["csi"]) and np.isfinite(lo["csi"]):
         width = hi["csi"] - lo["csi"]
+        pt = point["csi"]
+        # Absolute AND relative. An absolute-only rule is useless for rare
+        # events: at a 2e-3 base rate CSI is ~0.016, so its interval is ~0.01
+        # and no absolute threshold worth setting would ever fire -- on
+        # exactly the hazards this warning exists to protect.
         if width > 0.2:
-            warns.append(f"CSI interval spans {width:.2f} -- too wide to distinguish "
-                         f"models; differences under {width:.2f} are not real")
+            warns.append(f"CSI interval spans {width:.3f} -- too wide to distinguish "
+                         f"models; differences under {width:.3f} are not real")
+        elif pt > 0 and width / pt > 0.5:
+            warns.append(f"CSI interval is {width:.4f} wide on a point estimate of "
+                         f"{pt:.4f} ({100 * width / pt:.0f}% of the value) -- "
+                         f"model ranking here is not meaningful")
 
-    return CIResult(point, lo, hi, n_events, N, n_boot, alpha, warns)
+    return CIResult(point, lo, hi, n_events, N, n_boot, alpha, warns,
+                    n_blocks=n_blocks)
 
 
 def attach_confidence_intervals(
@@ -231,6 +301,7 @@ def attach_confidence_intervals(
     mask: np.ndarray | None = None,
     n_boot: int = 1000,
     seed: int = 0,
+    groups: np.ndarray | None = None,
 ):
     """Add CIs to an EvaluationResult, per lead time and pooled.
 
@@ -248,14 +319,15 @@ def attach_confidence_intervals(
     for li, lead in enumerate(result.per_lead):
         m = mask[:, li] if mask is not None else None
         lead.ci = bootstrap_ci(pred[:, li], obs[:, li], cfg, m,
-                               n_boot=n_boot, seed=seed + li).to_dict()
+                               n_boot=n_boot, seed=seed + li,
+                               groups=groups).to_dict()
 
     # Pooled: pass the full (N, L, H, W) array so the lead-time axis is
     # collapsed INTO each case rather than resampled as if independent.
     # Flattening to (N*L, H, W) here would treat the 30-min and 6-h frames of
     # one storm as two separate observations and shrink the interval.
     result.pooled["ci"] = bootstrap_ci(
-        pred, obs, cfg, mask, n_boot=n_boot, seed=seed + 999,
+        pred, obs, cfg, mask, n_boot=n_boot, seed=seed + 999, groups=groups,
     ).to_dict()
     return result
 

@@ -224,6 +224,9 @@ def test_reliability_of_a_calibrated_forecast():
     obs = (rng.random(probs.shape) < probs).astype(float)
     c = reliability_curve(probs, obs, n_bins=10)
     occupied = c.counts > 1000
+    # np.allclose over an EMPTY selection is vacuously True -- assert the
+    # selection is non-empty or this test asserts nothing.
+    assert occupied.sum() >= 4, "expected the four forecast bins to be populated"
     assert np.allclose(c.mean_forecast[occupied], c.observed_freq[occupied], atol=0.01)
 
 
