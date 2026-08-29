@@ -63,6 +63,64 @@ benchmarked. When it is, it must cover the full chain — decode → regrid →
 inference → publish — not `model.forward()` in isolation, which is the
 term least likely to dominate.
 
+## 4b. "INSAT WV is 8 km" is SATELLITE-SPECIFIC — and it is load-bearing
+
+**Read this before extending anything to INSAT-3DS.**
+
+A premise underpinning the whole SEVIR pretraining design is that INSAT
+water vapour is 8 km while TIR is 4 km, so SEVIR's 2 km WV is degraded
+2 km → 8 km → back onto the 4 km analysis grid. That premise is **true for
+INSAT-3D and INSAT-3DR and FALSE for INSAT-3DS.**
+
+| satellite | `IMG_WV` shape | WV native |
+|---|---|---|
+| INSAT-3D | 1408 × 1402 | 8 km |
+| INSAT-3DR | 1408 × 1402 | 8 km |
+| **INSAT-3DS** | **2816 × 2805** | **4 km** |
+
+3DS upgraded the water-vapour channel to full resolution. Consequences:
+
+- **A model pretrained on 8 km WV and deployed on 3DS throws away real
+  resolution** in the one channel this project calls its cornerstone
+  predictor (IWV variation).
+- A model trained on 3DS WV and run on 3DR would expect 4 km moisture
+  structure that physically is not there.
+- It also broke satpy: no `Longitude_WV`/`Latitude_WV` arrays exist on 3DS
+  because WV shares the main geolocation. See `docs/INSAT_FORMAT_CHECK.md`.
+
+Current mitigation: **train on 3DR only.** 3DR spans 2016-10-11 to present
+and covers every hindcast event, so nothing is lost today. Anyone extending
+past 3DR's lifetime must revisit the degradation design first — this is not
+a config tweak, it changes what the backbone learns.
+
+## 4c. OPEN: cold-tail divergence between 3DR and 3DS is unexplained
+
+On the one coincident pair measured (2025-08-01, 15 min apart, common India
+footprint, 787,968 cells):
+
+```
+   p1     p5    p10    p25    p50    p75    p90    p95    p99  p99.9
++13.42  +7.66  +4.74  +2.51  +0.88  +0.62  +0.97  +0.91  +0.82  +0.91
+```
+
+The warm half is a clean +0.90 K offset. The cold tail diverges by 13.4 K.
+
+The plausible benign explanation is convective evolution across the 15-minute
+gap plus parallax from an 8° difference in sub-satellite longitude (74°E vs
+82°E), since deep cloud tops are strongly view-angle sensitive.
+
+**But that is a hypothesis, not a finding.** A genuine divergence in the
+count→temperature LUT at the cold end is equally consistent with this data,
+and the cold tail is precisely where the convective signal lives — the part
+of the distribution the model is built to key on. The two satellites also use
+different calibration methods (3D/3DR `LAB CALIBRATED`, 3DS `ONLINE
+CALIBRATED`), which is a mechanism for exactly this.
+
+Unresolved. Not blocking, because we are 3DR-only. It becomes blocking the
+moment anyone extends past 3DR. To settle it: many coincident pairs,
+preferably clear-sky scenes where cloud-top evolution cannot confound, plus a
+direct comparison of the two LUTs at the cold end.
+
 ## 5. Sentinel values decoded as physical extremes — three found, assume more
 
 Three times on this project a fill or clamp value has decoded to a
@@ -73,6 +131,12 @@ plausible-looking physical **extreme** rather than raising:
 | SEVIR VIL | byte 255 | 81.33 kg/m² — top of the entire range | 27% of a missing event |
 | SEVIR / INSAT IR | int16 min | −327.68 °C — coldest possible cloud top | 7% |
 | INSAT L1B | count→K LUT clamp | 180.09 K in **two** channels with different physics | 0.33% |
+| INSAT-3DS | `Sun_Elevation` attr | `7.68e-76` → reads as "0 degrees" | scalar |
+
+The fourth is the same pattern in metadata rather than pixels: denormal-small
+rather than out of range, so `float()` accepts it. It gated a night scan
+correctly *by luck* and would have let reflective checks run on a daytime
+scene with unknown illumination.
 
 This is the worst possible failure mode for a severe-weather model: an
 extreme is exactly what the model is built to notice, so a sentinel becomes
