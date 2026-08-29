@@ -19,10 +19,10 @@ FULL_DISK_MB = 430.0
 BBOX_AREA_FRACTION = 0.10
 
 ap = argparse.ArgumentParser()
-ap.add_argument("--active-days", type=int, default=60)
-ap.add_argument("--null-days", type=int, default=20)
+ap.add_argument("--active-days", type=int, default=300)
+ap.add_argument("--null-days", type=int, default=100)
 ap.add_argument("--scans-per-active-day", type=int, default=24,
-                help="30-min cadence over a 12h convective window")
+                help="30-min cadence over a 12h convective window; 3DR scans :15 and :45 so 48/day is available if wanted")
 ap.add_argument("--scans-per-null-day", type=int, default=8)
 a = ap.parse_args()
 
@@ -44,11 +44,17 @@ for name, days, spd in rows:
     print(f"  {name:>8} {days:>6} {spd:>10} {n:>7,} {gb:>8.0f}")
 print(f"  {'TOTAL':>8} {a.active_days+a.null_days:>6} {'':>10} {tot_scans:>7,} {tot_gb:>8.0f}")
 
-print(f"\n  vs continuous 3 seasons: ~15,000 GB  ->  {15000/max(tot_gb,1):.0f}x smaller")
+print(f"\n  vs continuous 3 seasons: ~15,000 GB  ->  {15000/max(tot_gb,1):.1f}x smaller")
 print(f"  null fraction: {a.null_days/(a.active_days+a.null_days):.0%} of days, "
       f"{a.null_days*a.scans_per_null_day/tot_scans:.0%} of scans")
 print("\n  at 20 MB/s sustained: "
       f"{tot_gb*1024/20/3600:.1f} hours  ({tot_gb*1024/20/86400:.1f} days)")
+
+print("\nWHY BREADTH, NOT CONTINUITY")
+print("  The binding constraint is INDEPENDENT EPISODES, not volume. SEVIR's")
+print("  test split had 9. Spreading 300 active days across 2017-2025 buys")
+print("  many more independent synoptic episodes than the same 300 days taken")
+print("  from one or two seasons, where consecutive days share a setup.")
 
 print("\nWHY NULL DAYS ARE SAMPLED, NOT DROPPED")
 print("  Training only on active days inflates the base rate the model sees,")

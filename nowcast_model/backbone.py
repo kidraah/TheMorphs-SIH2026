@@ -109,13 +109,51 @@ class SpatioTemporalBackbone(nn.Module):
         self.dim, self.patch = dim, patch
         self.stem = nn.Conv3d(in_channels, dim, kernel_size=(1, patch, patch),
                               stride=(1, patch, patch))
-        self.space_pos = nn.Parameter(torch.zeros(1, max_tokens, dim))
+        # 2-D SEPARABLE position embeddings, not a flat 1-D table.
+        #
+        # A flat table sliced [:hw] encodes token i as (i // wp, i % wp), and
+        # wp changes with grid WIDTH. Train on 96x96 tiles (wp=24) and infer on
+        # the 912x864 grid (wp=216) and index 24 means (row 1, col 0) in
+        # training but (row 0, col 24) at inference. It does not raise -- it is
+        # silently, spatially wrong, which is exactly the failure that would
+        # have made "train on tiles, infer on the full grid" produce garbage.
+        #
+        # Separable row/column embeddings keep the meaning of a row index
+        # independent of the width, and each axis interpolates cleanly on its
+        # own when the inference grid is larger than the trained one.
+        # exactly the trained side, so the native resolution needs NO
+        # interpolation (int(sqrt)+1 gave 25 for a 24-token grid, resampling
+        # 25->24 on every forward pass at the trained size)
+        self.max_side = max(1, round(max_tokens ** 0.5))
+        self.row_pos = nn.Parameter(torch.zeros(1, self.max_side, dim))
+        self.col_pos = nn.Parameter(torch.zeros(1, self.max_side, dim))
         self.time_pos = nn.Parameter(torch.zeros(1, max_frames, 1, dim))
-        nn.init.trunc_normal_(self.space_pos, std=0.02)
+        nn.init.trunc_normal_(self.row_pos, std=0.02)
+        nn.init.trunc_normal_(self.col_pos, std=0.02)
         nn.init.trunc_normal_(self.time_pos, std=0.02)
         self.blocks = nn.ModuleList(
             [DividedSpaceTimeBlock(dim, heads, dropout=dropout) for _ in range(depth)])
         self.norm = nn.LayerNorm(dim)
+
+    def spatial_pos(self, hp: int, wp: int):
+        """Position embedding for an (hp, wp) token grid.
+
+        Axes are interpolated INDEPENDENTLY when the inference grid is larger
+        than the trained one -- standard practice for running a ViT at a new
+        resolution, and well posed here because each axis is 1-D.
+        """
+        row, col = self.row_pos, self.col_pos            # (1, S, C)
+        if hp != row.shape[1]:
+            row = torch.nn.functional.interpolate(
+                row.transpose(1, 2), size=hp, mode="linear",
+                align_corners=False).transpose(1, 2)
+        if wp != col.shape[1]:
+            col = torch.nn.functional.interpolate(
+                col.transpose(1, 2), size=wp, mode="linear",
+                align_corners=False).transpose(1, 2)
+        # broadcast to the 2-D grid, then flatten in the SAME row-major order
+        # the tokens use
+        return (row[:, :, None, :] + col[:, None, :, :]).reshape(1, hp * wp, -1)
 
     def forward(self, x):                        # (B, C, T, H, W)
         if x.ndim != 5:
@@ -127,14 +165,12 @@ class SpatioTemporalBackbone(nn.Module):
         x = self.stem(x)                         # (B, dim, T, h', w')
         _, c, t, hp, wp = x.shape
         hw = hp * wp
-        if hw > self.space_pos.shape[1]:
-            raise ValueError(f"{hw} spatial tokens exceeds max_tokens "
-                             f"{self.space_pos.shape[1]}")
         if t > self.time_pos.shape[1]:
             raise ValueError(f"{t} frames exceeds max_frames {self.time_pos.shape[1]}")
 
+        pos = self.spatial_pos(hp, wp)            # (1, hp*wp, C)
         x = x.permute(0, 2, 3, 4, 1).reshape(b, t, hw, c)
-        x = x + self.space_pos[:, :hw].unsqueeze(1) + self.time_pos[:, :t]
+        x = x + pos.unsqueeze(1) + self.time_pos[:, :t]
         x = x.reshape(b, t * hw, c)
 
         for blk in self.blocks:

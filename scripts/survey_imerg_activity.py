@@ -28,8 +28,13 @@ from nowcast_data.imerg import fetch, read_precipitation
 BOX = (62.3, 5.8, 101.7, 39.5)
 
 ap = argparse.ArgumentParser()
-ap.add_argument("--start", default="2024-06-01")
-ap.add_argument("--end", default="2024-09-30")
+ap.add_argument("--years", default="2017,2018,2019,2020,2021,2022,2023,2024,2025",
+                help="monsoon seasons to survey; breadth across YEARS buys "
+                     "independent synoptic episodes, which is the binding "
+                     "constraint -- not volume")
+ap.add_argument("--season", default="06-01:09-30", help="MM-DD:MM-DD")
+ap.add_argument("--start", default="")
+ap.add_argument("--end", default="")
 ap.add_argument("--hours", default="03,09,15,21",
                 help="UTC hours to sample per day (:30 granule of each)")
 ap.add_argument("--dest", default="data/imerg_survey")
@@ -37,7 +42,13 @@ ap.add_argument("--out", default="data/imerg_survey/activity.csv")
 a = ap.parse_args()
 
 hours = [int(h) for h in a.hours.split(",")]
-days = pd.date_range(a.start, a.end, freq="D")
+if a.start and a.end:
+    days = pd.date_range(a.start, a.end, freq="D")
+else:
+    s0, s1 = a.season.split(":")
+    days = pd.DatetimeIndex([])
+    for y in [int(y) for y in a.years.split(",")]:
+        days = days.append(pd.date_range(f"{y}-{s0}", f"{y}-{s1}", freq="D"))
 print(f"surveying {len(days)} days x {len(hours)} granules = {len(days)*len(hours)} granules",
       flush=True)
 

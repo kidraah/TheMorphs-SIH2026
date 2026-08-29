@@ -331,3 +331,48 @@ def test_operating_points_reports_both_side_by_side():
     assert set(op) == {"unconstrained", "far_constrained", "max_far"}
     assert op["far_constrained"]["far"] <= op["unconstrained"]["far"]
     assert "feasible" in op["far_constrained"]
+
+
+# --------------------------------------------------------------------------
+# Position embeddings and resolution transfer
+# --------------------------------------------------------------------------
+
+def test_model_trained_at_tile_size_runs_at_full_grid():
+    """The tile->full-grid path. Full India inference is feasible (measured:
+    116 MB, 15.5 s on MPS), so this must work."""
+    m = MultiTaskNowcaster(ModelConfig(in_channels=4, context_frames=2,
+            grid_size=96, lead_steps=6, dim=32, depth=1)).eval()
+    for h, w in ((96, 96), (192, 192), (384, 288)):
+        with torch.no_grad():
+            out = m(torch.randn(1, 4, 2, h, w), torch.rand(1, 8, 2) * 2 - 1)
+        assert out["rain_rate"].shape == (1, 6, h, w)
+
+
+def test_row_position_is_independent_of_grid_width():
+    """The bug this replaced: a flat 1-D table sliced [:hw] encodes token i as
+    (i//wp, i%wp), and wp changes with WIDTH. Train at wp=24, infer at wp=216,
+    and index 120 means (row 5, col 0) then (row 0, col 120). It does not
+    raise -- it is silently spatially wrong."""
+    bb = MultiTaskNowcaster(ModelConfig(in_channels=4, grid_size=96, dim=32,
+                                        depth=1)).backbone
+    narrow = bb.spatial_pos(24, 24).reshape(24, 24, -1)
+    wide = bb.spatial_pos(24, 216).reshape(24, 216, -1)
+    # a row DIFFERENCE cancels the column term, so it must match exactly
+    d = ((narrow[5] - narrow[9])[0] - (wide[5] - wide[9])[0]).abs().max()
+    assert d < 1e-6, f"row meaning still depends on width: {d}"
+
+
+def test_column_position_is_independent_of_grid_height():
+    bb = MultiTaskNowcaster(ModelConfig(in_channels=4, grid_size=96, dim=32,
+                                        depth=1)).backbone
+    short = bb.spatial_pos(24, 48).reshape(24, 48, -1)
+    tall = bb.spatial_pos(216, 48).reshape(216, 48, -1)
+    d = ((short[:, 5] - short[:, 9])[0] - (tall[:, 5] - tall[:, 9])[0]).abs().max()
+    assert d < 1e-6, f"column meaning depends on height: {d}"
+
+
+def test_native_resolution_needs_no_interpolation():
+    bb = MultiTaskNowcaster(ModelConfig(in_channels=4, grid_size=96, dim=32,
+                                        depth=1)).backbone
+    p = bb.spatial_pos(bb.max_side, bb.max_side)
+    assert p.shape[1] == bb.max_side ** 2
