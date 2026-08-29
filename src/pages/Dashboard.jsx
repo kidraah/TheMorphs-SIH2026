@@ -23,24 +23,24 @@ export const Dashboard = () => {
       {/* 1. Full-Width High-Risk Alert Banner */}
       <AlertBanner />
 
-      {/* 2. Main Dashboard Top Section: 3-Column Layout (Option 1)
-          Col 1 (~52%): Live Risk Map
-          Col 2 (~24%): Risk Timeline
-          Col 3 (~24%): Vertical Risk Status Cards */}
+      {/* 2. Main Dashboard Top Section: 3-Column Layout
+          Col 1 (~58%): Live Risk Map (Expanded width)
+          Col 2 (~25%): Risk Timeline
+          Col 3 (~17%): Vertical Risk Status Cards (Slim compact width) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 min-h-[540px]">
         
-        {/* COLUMN 1: Live Risk Map (52% on desktop) */}
-        <div className="lg:col-span-6 xl:col-span-6 flex flex-col h-[520px] lg:h-[540px] xl:h-[560px]">
+        {/* COLUMN 1: Live Risk Map (58% on desktop) */}
+        <div className="lg:col-span-7 xl:col-span-7 flex flex-col h-[520px] lg:h-[540px] xl:h-[560px]">
           <RiskMap height="h-full" />
         </div>
 
-        {/* COLUMN 2: Risk Timeline (24% on desktop) */}
+        {/* COLUMN 2: Risk Timeline (25% on desktop) */}
         <div className="lg:col-span-3 xl:col-span-3 flex flex-col h-[520px] lg:h-[540px] xl:h-[560px]">
           <RiskTimeline />
         </div>
 
-        {/* COLUMN 3: Vertical Risk Status Cards (24% on desktop) */}
-        <div className="lg:col-span-3 xl:col-span-3 flex flex-col h-auto lg:h-[540px] xl:h-[560px]">
+        {/* COLUMN 3: Vertical Risk Status Cards (Slim ~17% on desktop) */}
+        <div className="lg:col-span-2 xl:col-span-2 flex flex-col h-auto lg:h-[540px] xl:h-[560px]">
           <RiskCards layout="vertical" />
         </div>
       </div>

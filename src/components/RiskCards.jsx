@@ -69,13 +69,13 @@ export const RiskCards = ({ layout = 'vertical' }) => {
   return (
     <div className={containerClass}>
       {/* 1. OVERALL RISK LEVEL */}
-      <div className="bg-white border border-[#E2E2E2] rounded px-3 py-2 sm:py-2.5 shadow-gov-sm flex items-center justify-between flex-1 min-h-[80px]">
+      <div className="bg-white border border-[#E2E2E2] rounded px-2.5 py-2 shadow-gov-sm flex items-center justify-between flex-1 min-h-[78px]">
         <div className="min-w-0">
-          <span className="text-[10px] sm:text-[10.5px] font-bold text-slate-500 uppercase tracking-wide block mb-0.5">
+          <span className="text-[9.5px] sm:text-[10px] font-bold text-slate-500 uppercase tracking-wide block mb-0.5">
             {isDistrictInspected ? 'District Risk Level' : 'Overall Risk Level'}
           </span>
           <span
-            className="text-[18px] sm:text-[21px] font-extrabold leading-tight block"
+            className="text-[17px] sm:text-[19px] font-extrabold leading-tight block"
             style={{ color: getRiskColor(displayData.overallRisk.level) }}
           >
             {displayData.overallRisk.level}
@@ -83,12 +83,12 @@ export const RiskCards = ({ layout = 'vertical' }) => {
           {isDistrictInspected ? (
             <button
               onClick={resetFilters}
-              className="text-[9.5px] text-[#C85D00] font-bold hover:underline block mt-0.5 uppercase"
+              className="text-[9px] text-[#C85D00] font-bold hover:underline block mt-0.5 uppercase"
             >
               Clear: {displayData.overallRisk.affectedDistricts}
             </button>
           ) : (
-            <span className="text-[10px] sm:text-[10.5px] text-slate-500 font-medium block mt-0.5">
+            <span className="text-[9.5px] sm:text-[10px] text-slate-500 font-medium block mt-0.5 truncate">
               Across {displayData.overallRisk.affectedDistricts} Districts
             </span>
           )}
@@ -96,72 +96,72 @@ export const RiskCards = ({ layout = 'vertical' }) => {
       </div>
 
       {/* 2. THUNDERSTORM RISK */}
-      <div className="bg-white border border-[#E2E2E2] rounded px-3 py-2 sm:py-2.5 shadow-gov-sm flex items-center justify-between flex-1 min-h-[80px]">
+      <div className="bg-white border border-[#E2E2E2] rounded px-2.5 py-2 shadow-gov-sm flex items-center justify-between flex-1 min-h-[78px]">
         <div className="min-w-0">
-          <span className="text-[10px] sm:text-[10.5px] font-bold text-slate-500 uppercase tracking-wide block mb-0.5">
+          <span className="text-[9.5px] sm:text-[10px] font-bold text-slate-500 uppercase tracking-wide block mb-0.5">
             Thunderstorm Risk
           </span>
           <span
-            className="text-[18px] sm:text-[21px] font-extrabold leading-tight block"
+            className="text-[17px] sm:text-[19px] font-extrabold leading-tight block"
             style={{ color: getRiskColor(displayData.thunderstormRisk.level) }}
           >
             {displayData.thunderstormRisk.level}
           </span>
-          <span className="text-[10px] sm:text-[10.5px] text-slate-500 font-medium block mt-0.5">
+          <span className="text-[9.5px] sm:text-[10px] text-slate-500 font-medium block mt-0.5">
             Probability {displayData.thunderstormRisk.probability}%
           </span>
         </div>
       </div>
 
       {/* 3. CLOUDBURST RISK */}
-      <div className="bg-white border border-[#E2E2E2] rounded px-3 py-2 sm:py-2.5 shadow-gov-sm flex items-center justify-between flex-1 min-h-[80px]">
+      <div className="bg-white border border-[#E2E2E2] rounded px-2.5 py-2 shadow-gov-sm flex items-center justify-between flex-1 min-h-[78px]">
         <div className="min-w-0">
-          <span className="text-[10px] sm:text-[10.5px] font-bold text-slate-500 uppercase tracking-wide block mb-0.5">
+          <span className="text-[9.5px] sm:text-[10px] font-bold text-slate-500 uppercase tracking-wide block mb-0.5">
             Cloudburst Risk
           </span>
           <span
-            className="text-[18px] sm:text-[21px] font-extrabold leading-tight block"
+            className="text-[17px] sm:text-[19px] font-extrabold leading-tight block"
             style={{ color: getRiskColor(displayData.cloudburstRisk.level) }}
           >
             {displayData.cloudburstRisk.level}
           </span>
-          <span className="text-[10px] sm:text-[10.5px] text-slate-500 font-medium block mt-0.5">
+          <span className="text-[9.5px] sm:text-[10px] text-slate-500 font-medium block mt-0.5">
             Probability {displayData.cloudburstRisk.probability}%
           </span>
         </div>
       </div>
 
       {/* 4. FLASH FLOOD RISK */}
-      <div className="bg-white border border-[#E2E2E2] rounded px-3 py-2 sm:py-2.5 shadow-gov-sm flex items-center justify-between flex-1 min-h-[80px]">
+      <div className="bg-white border border-[#E2E2E2] rounded px-2.5 py-2 shadow-gov-sm flex items-center justify-between flex-1 min-h-[78px]">
         <div className="min-w-0">
-          <span className="text-[10px] sm:text-[10.5px] font-bold text-slate-500 uppercase tracking-wide block mb-0.5">
+          <span className="text-[9.5px] sm:text-[10px] font-bold text-slate-500 uppercase tracking-wide block mb-0.5">
             Flash Flood Risk
           </span>
           <span
-            className="text-[18px] sm:text-[21px] font-extrabold leading-tight block"
+            className="text-[17px] sm:text-[19px] font-extrabold leading-tight block"
             style={{ color: getRiskColor(displayData.flashFloodRisk.level) }}
           >
             {displayData.flashFloodRisk.level}
           </span>
-          <span className="text-[10px] sm:text-[10.5px] text-slate-500 font-medium block mt-0.5">
+          <span className="text-[9.5px] sm:text-[10px] text-slate-500 font-medium block mt-0.5">
             Probability {displayData.flashFloodRisk.probability}%
           </span>
         </div>
       </div>
 
       {/* 5. NEXT UPDATE IN */}
-      <div className="bg-white border border-[#E2E2E2] rounded px-3 py-2 sm:py-2.5 shadow-gov-sm flex items-center justify-between flex-1 min-h-[80px]">
+      <div className="bg-white border border-[#E2E2E2] rounded px-2.5 py-2 shadow-gov-sm flex items-center justify-between flex-1 min-h-[78px]">
         <div className="min-w-0">
-          <span className="text-[10px] sm:text-[10.5px] font-bold text-slate-500 uppercase tracking-wide block mb-0.5">
+          <span className="text-[9.5px] sm:text-[10px] font-bold text-slate-500 uppercase tracking-wide block mb-0.5">
             Next Update
           </span>
           <span
             className="font-mono font-extrabold text-emerald-600 leading-tight block"
-            style={{ fontSize: '18px', letterSpacing: '0.04em' }}
+            style={{ fontSize: '17px', letterSpacing: '0.03em' }}
           >
             {formatTime(secondsLeft)}
           </span>
-          <span className="text-[10px] sm:text-[10.5px] text-slate-500 font-medium block mt-0.5">
+          <span className="text-[9.5px] sm:text-[10px] text-slate-500 font-medium block mt-0.5">
             Stay Tuned
           </span>
         </div>
@@ -169,7 +169,7 @@ export const RiskCards = ({ layout = 'vertical' }) => {
           type="button"
           onClick={reset}
           title="Refresh Nowcast"
-          className="w-8 h-8 rounded-full border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 flex items-center justify-center text-emerald-700 transition-colors shrink-0 ml-2 shadow-xs"
+          className="w-7 h-7 rounded-full border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 flex items-center justify-center text-emerald-700 transition-colors shrink-0 ml-1.5 shadow-xs"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
         </button>
