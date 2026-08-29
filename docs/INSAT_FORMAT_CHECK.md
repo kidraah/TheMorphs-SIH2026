@@ -7,23 +7,75 @@ attributed to a specific product version.
 
 ## What is proven, and what is not
 
-| satellite | product | reader proven? | status |
-|---|---|---|---|
-| INSAT-3D | `3DIMG_L1B_STD` | **yes** — 2019 V01R00, below | **In-Active since 2024-06-18** |
-| INSAT-3DR | `3RIMG_L1B_STD` | **NO** | Active — *the workhorse for every event from 2016* |
-| INSAT-3DS | `3SIMG_L1B_STD` | **NO** | Active — current operational |
+| satellite | product | satpy reader | our `ingest_scan` | status |
+|---|---|---|---|---|
+| INSAT-3D | `3DIMG_L1B_STD` | PASS (2019) | PASS | In-Active since 2024-06-18 |
+| INSAT-3DR | `3RIMG_L1B_STD` | **PASS** (2025-08-01) | **PASS** | Active — the workhorse |
+| INSAT-3DS | `3SIMG_L1B_STD` | **FAILS** | **PASS** (native fallback) | Active — current operational |
 
-**The only satellite satpy is proven on is the decommissioned one.** The
-2019 file is `3DIMG` — INSAT-3D, which stopped delivering on 2024-06-18.
-Nothing downstream may assume the reader works on 3DR or 3DS.
+## ARCHIVE CONFIGS ARE CLEARED
 
-That matters most for 3DR: it carries every hindcast event from 2016 onward
-and all 24 monsoon archive configs. If the reader fails on `3RIMG`, those 24
-configs are dead until it is fixed, and no plan built on them holds.
+`3RIMG_L1B_STD` passes both satpy and our full check on a real 2025 scan.
+All 24 monsoon archive configs and every hindcast event from 2016 onward are
+cleared to run.
 
-Gates: `configs/mosdac/00_verify_3DS_current.json` and
-`configs/mosdac/01_verify_3DR_current.json`. Both must pass before any bulk
-pull.
+**Caveat, per the run:** the gate files are dated **2025-08-01**, not 2026.
+Both are inside coverage so the gate is valid, but a format change in the
+last year would not be caught. Re-verify with a recent scan before the
+operational deployment claim.
+
+## satpy FAILS on INSAT-3DS — cause found, worked around
+
+```
+KeyError: "No variable named 'Longitude_WV'"
+```
+
+Structural, not a corruption. On 3D and 3DR the water-vapour channel is
+half-resolution (1408×1402, 8 km) and carries its own coarse geolocation
+arrays `Latitude_WV` / `Longitude_WV`. **On 3DS the WV channel is full 4 km
+(2816×2805)**, shares the main `Latitude`/`Longitude`, and the `*_WV` arrays
+do not exist. satpy 0.60 assumes they do.
+
+`nowcast_data.insat.read_scan_native` decodes directly from the HDF5 via the
+count→temperature LUT and resolves geolocation per channel, so 3DS works.
+`ingest_scan` uses satpy first and falls back automatically, recording which
+reader ran.
+
+**This changes a design assumption.** The whole per-channel resolution
+argument — degrade SEVIR water vapour to 8 km because that is what INSAT
+resolves — holds for 3D and 3DR but **not for 3DS, where WV is 4 km.** A
+model pretrained on 8 km WV and deployed on 3DS would be discarding real
+resolution; one trained on 3DS WV and run on 3DR would expect detail that is
+not there. Training on 3DR alone (which spans the entire archive) sidesteps
+this, and it is another reason to prefer that.
+
+## INSAT-3DS writes a garbage solar-elevation attribute
+
+`Sun_Elevation(Degrees) = 7.68e-76` on the 2025-08-01 2330Z scan. It is
+denormal-small rather than out of range, so a naive `float()` accepts it and
+reads as "0 degrees". That gated correctly here only because the scan is at
+night anyway; on a daytime scene it would have let the reflective checks run
+against unknown illumination.
+
+`solar_elevation()` now rejects values within 1e-6 of zero, and falls back to
+the per-pixel `Sun_Elevation` dataset **sampled over the AOI** — not the
+whole disk. A geostationary full disk always spans the terminator, so its
+median elevation is ~0 by construction: measured at **+0.80°** for the 3DR
+scan whose own attribute reads **−17.26°**. A disk-median fallback would have
+reported every scan as twilight.
+
+AOI-sampled (central India): 3DR −1.13°, 3DS −4.09° — both correctly pre-dawn.
+
+## Calibration method differs between satellites
+
+| satellite | `Radiometric_Calibration_Type` |
+|---|---|
+| INSAT-3D (2019) | LAB CALIBRATED |
+| INSAT-3DR (2025) | LAB CALIBRATED |
+| INSAT-3DS (2025) | **ONLINE CALIBRATED** |
+
+Relevant to whether the three can be mixed in training — see the
+cross-satellite section below.
 
 ## Baseline: 2019 V01R00 (INSAT-3D) — PASSES
 
@@ -65,14 +117,71 @@ below 190 K. Widened to 170–345 K (TIR/MIR) and 170–290 K (WV) against
 observed data. A sanity check calibrated on a textbook rather than on the
 instrument is itself a source of false alarms.
 
-## Open: 3DR and 3DS — NOT yet verified
+## Gate results, 2025-08-01
 
-A 2019 INSAT-3D pass says nothing about either active satellite. Each is a
-different instrument with its own calibration, and possibly a different
-`Software_Version` or geometry.
+### INSAT-3DR — `3RIMG_01AUG2025_2345_L1B_STD_V01R00.h5` (433 MB) — PASS
 
-Record the identity block from each gate here as it comes in, so the three
-can be diffed against one another.
+```
+Satellite_Name               INSAT-3DR      Software_Version   1.0
+Product_Type                 STANDARD (FULL DISK)
+Acquisition_Time_in_GMT      2345           Sun_Elevation      -17.26 deg
+Radiometric_Calibration_Type LAB CALIBRATED
+Sub-satellite longitude      74.0 E
+```
+
+| channel | shape | finite | p1 | p50 | p99.9 | floor saturation |
+|---|---|---|---|---|---|---|
+| TIR1 | 2816×2805 | 72.9% | 193.4 | 278.3 | 298.7 | 0.339% @ 179.86 K |
+| WV | 1408×1402 | 73.1% | 208.7 | 243.2 | 264.2 | 0.000% |
+
+### INSAT-3DS — `3SIMG_01AUG2025_2330_L1B_STD_V01R00.h5` (423 MB) — PASS via native reader
+
+```
+Satellite_Name               INSAT-3DS      Software_Version   1.0
+Acquisition_Time_in_GMT      2330           Sun_Elevation      7.68e-76 (GARBAGE)
+Radiometric_Calibration_Type ONLINE CALIBRATED
+Sub-satellite longitude      82.0 E
+```
+
+| channel | shape | finite | p1 | p50 | p99.9 | floor saturation |
+|---|---|---|---|---|---|---|
+| TIR1 | 2816×2805 | 72.8% | 211.8 | 279.8 | 299.1 | 0.002% @ 180.00 K |
+| WV | **2816×2805** | 72.6% | 210.2 | 242.2 | 262.3 | 0.000% |
+
+### Sentinel scan — clean on both
+
+Fourth data source checked, and the first with nothing to report. Once the
+off-disk fill (count 1023, ~27% of pixels) is masked, neither file has an
+isolated value spike; only low-suspicion interior modes from LUT
+quantisation. The LUT clamp is present as expected — 3D 180.09 K, 3DR
+179.86 K, 3DS 180.00 K, all slightly different — and is correctly reported
+as visible-but-passing rather than treated as physics.
+
+### Cross-satellite comparison — INCONCLUSIVE, and that is the honest answer
+
+Compared on the **common India-grid footprint** (787,968 cells), not on raw
+full disks: 3DR sits at 74°E and 3DS at 82°E, so their disks cover different
+geography and a raw distribution comparison would measure that rather than
+calibration.
+
+```
+        p1     p5    p10    p25    p50    p75    p90    p95    p99  p99.9
+     +13.42  +7.66  +4.74  +2.51  +0.88  +0.62  +0.97  +0.91  +0.82  +0.91
+```
+
+The warm half is a clean **+0.90 K offset** (spread 0.97 K) — small, and the
+kind of thing per-satellite normalisation handles. The cold tail diverges by
+**13.4 K**.
+
+Calibration shifts the *whole* distribution, so a tail-only divergence points
+elsewhere: the two scans are 15 minutes apart with convection evolving, and
+deep cloud tops are strongly parallax- and view-angle-sensitive across an 8°
+difference in sub-satellite longitude. **One scene pair cannot separate those
+from a real calibration difference.** Repeat over many coincident pairs,
+preferably clear-sky, before deciding.
+
+This does not block anything: 3RIMG alone spans 2016-10-11 to present and
+covers every hindcast event, so training need not wait on the answer.
 
 To close it: fetch `configs/mosdac_test.json`, run
 

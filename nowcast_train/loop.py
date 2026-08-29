@@ -61,6 +61,10 @@ class TrainConfig:
     # tiny when negatives dominate, so an unconstrained optimum buys recall at
     # almost any price. Both points are reported every epoch; neither is
     # quotable without the other.
+    # PLACEHOLDER, not an analysis -- see docs/LIMITATIONS.md #6. A justified
+    # ceiling follows from the cost ratio between a missed event and a false
+    # evacuation, and is per-head because it depends on the base rate. 0.80 is
+    # merely much better than the 0.997 an unconstrained optimum gives.
     far_ceiling: float = 0.80
 
     def __post_init__(self):

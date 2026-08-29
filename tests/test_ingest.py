@@ -324,7 +324,7 @@ def test_reflective_channels_are_na_at_night_not_failed():
     chk = insat.check_physics(arrays, metadata=meta)
     assert chk.passed, "night-time VIS must not fail the scan"
     reflective_skips = {r.name.split()[0] for r in chk.results
-                        if r.skipped and "extremes" not in r.name}
+                        if r.skipped and "(reflective)" in r.name}
     assert reflective_skips == {"VIS", "SWIR"}
     assert "N/A" in chk.report()
 
@@ -334,7 +334,7 @@ def test_reflective_channels_are_checked_in_daylight():
     arrays = {"TIR1": _realistic_tir(), "VIS": np.zeros((30, 30))}
     chk = insat.check_physics(arrays, metadata=meta)
     reflective_skips = [r for r in chk.results
-                        if r.skipped and r.name.startswith(("VIS", "SWIR"))]
+                        if r.skipped and "(reflective)" in r.name]
     assert not reflective_skips, "reflective checks must run when the sun is up"
 
 
@@ -587,3 +587,84 @@ def test_too_few_pixels_is_not_compared():
     r = compare_distributions({"TIR1": np.array([275.0, 276.0])},
                               {"TIR1": np.array([275.0, 276.0])})
     assert r.comparisons == []
+
+
+# --------------------------------------------------------------------------
+# Findings from the 2025 3DR/3DS gate files
+# --------------------------------------------------------------------------
+
+def test_denormal_solar_elevation_is_rejected():
+    """INSAT-3DS writes Sun_Elevation(Degrees) = 7.68e-76. It is denormal-small
+    rather than out of range, so a naive float() accepts it and reads as
+    '0 degrees' -- which gates a night scan correctly by luck and would let
+    reflective checks run on a daytime scene with unknown illumination."""
+    assert insat.solar_elevation({"Sun_Elevation(Degrees)": 7.68248614658878e-76}) is None
+    assert insat.solar_elevation({"Sun_Elevation(Degrees)": -17.26}) == pytest.approx(-17.26)
+    assert insat.solar_elevation({"Sun_Elevation(Degrees)": 1e3}) is None
+    assert insat.solar_elevation({"Sun_Elevation(Degrees)": float("nan")}) is None
+
+
+def test_small_scan_sample_size_is_flagged_not_failed():
+    """p1/p99.9 on a crop carry ~1 K of sampling noise. Flag it, don't fail:
+    the same effect measured for cross-satellite comparison applies here."""
+    chk = insat.check_physics({"TIR1": _realistic_tir((100, 100))}, metadata={})
+    rows = [r for r in chk.results if "sample size" in r.name]
+    assert rows and rows[0].skipped
+    assert "sampling noise" in rows[0].detail
+    assert chk.passed, "a small sample is a caveat, not a failure"
+
+
+REAL_3DR = Path("/Users/evad/test_ff/3RIMG_L1B_STD/2025/01AUG/"
+                "3RIMG_01AUG2025_2345_L1B_STD_V01R00.h5")
+REAL_3DS = Path("/Users/evad/test_ff/3SIMG_L1B_STD/2025/01AUG/"
+                "3SIMG_01AUG2025_2330_L1B_STD_V01R00.h5")
+
+
+@pytest.mark.skipif(not REAL_3DR.exists(), reason="3DR gate file not present")
+def test_3dr_passes_through_satpy():
+    """3DR is the workhorse: every hindcast event from 2016 and all 24 archive
+    configs route through it."""
+    arrays, chk = insat.ingest_scan(REAL_3DR, ("TIR1", "WV"), strict=False)
+    assert chk.passed, chk.report()
+    assert chk.metadata["_reader"] == "satpy"
+    assert all(v.shape == (912, 864) for v in arrays.values())
+
+
+@pytest.mark.skipif(not REAL_3DS.exists(), reason="3DS gate file not present")
+def test_3ds_needs_the_native_reader():
+    """satpy 0.60 raises KeyError('Longitude_WV') on 3DS: its WV channel was
+    upgraded to full 4 km resolution, so the separate coarse WV geolocation
+    arrays that 3D/3DR carry no longer exist."""
+    with pytest.raises(KeyError, match="Longitude_WV|available"):
+        insat.read_scan(REAL_3DS, ("TIR1", "WV"))
+
+    arrays, chk = insat.ingest_scan(REAL_3DS, ("TIR1", "WV"), strict=False)
+    assert chk.passed, chk.report()
+    assert chk.metadata["_reader"].startswith("native")
+    assert all(v.shape == (912, 864) for v in arrays.values())
+
+
+@pytest.mark.skipif(not REAL_3DS.exists(), reason="3DS gate file not present")
+def test_3ds_water_vapour_is_full_resolution():
+    """The structural change behind the satpy failure, and a live design
+    assumption: 'INSAT WV is 8 km' is true for 3D/3DR and FALSE for 3DS."""
+    d = insat.read_scan_native(REAL_3DS, ("TIR1", "WV"))
+    assert d["WV"]["bt"].shape == d["TIR1"]["bt"].shape == (2816, 2805)
+    assert d["WV"]["geo_source"] == "Latitude", "3DS WV shares the main geolocation"
+
+
+@pytest.mark.skipif(not REAL_3DR.exists(), reason="3DR gate file not present")
+def test_3dr_water_vapour_is_half_resolution():
+    d = insat.read_scan_native(REAL_3DR, ("TIR1", "WV"))
+    assert d["TIR1"]["bt"].shape == (2816, 2805)
+    assert d["WV"]["bt"].shape == (1408, 1402)
+    assert d["WV"]["geo_source"] == "Latitude_WV"
+
+
+@pytest.mark.skipif(not REAL_3DR.exists(), reason="3DR gate file not present")
+def test_disk_median_solar_elevation_would_be_wrong():
+    """A geostationary disk always spans the terminator, so its median
+    elevation is ~0 by construction -- +0.80 deg for a scan whose attribute
+    reads -17.26. Sampling must be over the AOI, not the disk."""
+    aoi = insat.solar_elevation_from_dataset(REAL_3DR, aoi_lat=23.0, aoi_lon=82.0)
+    assert aoi is not None and aoi < 0, f"India pre-dawn should be negative, got {aoi}"

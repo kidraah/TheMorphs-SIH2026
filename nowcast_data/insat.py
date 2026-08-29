@@ -63,6 +63,18 @@ BT_CHANNELS = tuple(EXPECTED_BT_PERCENTILES)
 # before it is reported as saturation/fill contamination rather than signal.
 MAX_SATURATED_FRAC = 0.02
 
+# Below this many finite pixels the p1/p99.9 checks are sampling noise rather
+# than physics -- the same effect measured for cross-satellite comparison
+# (two identical distributions differ at p99.9 by 1.31 K at n=100k, 0.10 K at
+# n=7.9M). A full TIR scan is ~5.8M valid pixels so ingest_scan is unaffected;
+# a CROP may not be, and the check says so rather than passing or failing on
+# noise.
+MIN_RELIABLE_N = 500_000
+
+# The off-disk fill count in the INSAT count->temperature LUT. Maps to the
+# LUT's clamped final entry, so it must be masked BEFORE any statistic.
+INSAT_FILL_COUNT = 1023
+
 # Reflective channels. Meaningless at night, so they are reported N/A rather
 # than FAIL when the sun is down -- see solar_elevation() below.
 REFLECTIVE_CHANNELS = ("VIS", "SWIR")
@@ -148,12 +160,71 @@ def read_metadata(path) -> dict:
 
 
 def solar_elevation(meta: dict) -> float | None:
-    """Scene solar elevation in degrees, or None if absent."""
+    """Scene solar elevation in degrees, or None if absent/implausible.
+
+    INSAT-3DS writes a GARBAGE value here: 7.68e-76 on the 2025-08-01 2330Z
+    scan, where the true elevation is roughly -12 deg (05:00 IST). It is
+    denormal-small rather than out of range, so a naive float() accepts it
+    and it reads as "0 degrees" -- which happened to gate correctly for a
+    night scan and would have failed silently for a daytime one, letting
+    reflective checks run on a scene whose illumination we do not know.
+
+    Values within 1e-6 of zero are treated as unset. Use
+    `solar_elevation_from_dataset` for a real value when the attribute is bad.
+    """
     v = meta.get("Sun_Elevation(Degrees)")
     try:
-        return float(v)
+        f = float(v)
     except (TypeError, ValueError):
         return None
+    if not np.isfinite(f) or abs(f) > 90.0:
+        return None
+    if abs(f) < 1e-6:          # denormal garbage, not a real horizon crossing
+        return None
+    return f
+
+
+def solar_elevation_from_dataset(path, aoi_lat: float = 23.0,
+                                 aoi_lon: float = 82.0,
+                                 radius_deg: float = 8.0) -> float | None:
+    """Solar elevation over the AREA OF INTEREST, from the per-pixel dataset.
+
+    Sampled near the AOI centre, NOT across the whole disk. A geostationary
+    full disk always spans the terminator, so its median elevation is ~0 by
+    construction -- measured at +0.80 deg for a 3DR scan whose own attribute
+    reads -17.26 deg. A disk-median fallback would therefore report every
+    scan as twilight and gate the reflective checks wrongly.
+
+    What matters is whether OUR grid is illuminated, so the sample is taken
+    within `radius_deg` of the AOI centre (default: central India).
+    """
+    import h5py
+
+    with h5py.File(Path(path), "r") as fh:
+        if "Sun_Elevation" not in fh or "Latitude" not in fh:
+            return None
+        d = fh["Sun_Elevation"]
+        a = np.asarray(d[0] if d.ndim == 3 else d[:], dtype=np.float64)
+        sf = d.attrs.get("scale_factor")
+        if sf is not None:
+            a = a * float(np.asarray(sf).flat[0])
+        fill = d.attrs.get("_FillValue")
+        if fill is not None:
+            a = np.where(a == float(np.asarray(fill).flat[0]) *
+                         (float(np.asarray(sf).flat[0]) if sf is not None else 1.0),
+                         np.nan, a)
+        lat = np.asarray(fh["Latitude"][:], dtype=np.float64)
+        lon = np.asarray(fh["Longitude"][:], dtype=np.float64)
+        for arr, key in ((lat, "Latitude"), (lon, "Longitude")):
+            k = fh[key].attrs.get("scale_factor")
+            if k is not None:
+                arr *= float(np.asarray(k).flat[0])
+
+    if a.shape != lat.shape:
+        return None
+    near = (np.abs(lat - aoi_lat) <= radius_deg) & (np.abs(lon - aoi_lon) <= radius_deg)
+    v = a[near & np.isfinite(a)]
+    return float(np.median(v)) if v.size else None
 
 
 def is_daylight(meta: dict, min_elevation: float = DAYLIGHT_MIN_ELEVATION) -> bool:
@@ -192,6 +263,14 @@ def check_physics(arrays: dict, min_valid_frac: float = 0.05,
 
         chk.add(f"{name} coverage", frac >= min_valid_frac,
                 f"{100 * frac:.1f}% finite pixels")
+
+        n_finite = int(finite.sum())
+        if n_finite < MIN_RELIABLE_N:
+            chk.add(f"{name} sample size", True,
+                    f"only {n_finite:,} finite pixels (< {MIN_RELIABLE_N:,}) -- "
+                    f"p1/p99.9 here carry sampling noise of order 1 K; treat the "
+                    f"percentile verdicts as indicative. Check full scans, not crops.",
+                    skipped=True)
         if not finite.any():
             chk.add(f"{name} range", False, "no finite pixels to check")
             continue
@@ -246,6 +325,57 @@ def check_physics(arrays: dict, min_valid_frac: float = 0.05,
     return chk
 
 
+def read_scan_native(path, channels: Sequence[str] = ("TIR1", "WV")) -> dict:
+    """Decode INSAT L1B directly from the HDF5, bypassing satpy.
+
+    Needed because satpy 0.60's `insat3d_img_l1b_h5` reader FAILS on
+    INSAT-3DS:
+
+        KeyError: "No variable named 'Longitude_WV'"
+
+    On INSAT-3D and 3DR the water-vapour channel is half-resolution
+    (1408x1402, 8 km) and carries its OWN coarse geolocation arrays. On
+    INSAT-3DS the WV channel was upgraded to full 4 km resolution
+    (2816x2805), so it shares the main Latitude/Longitude and the separate
+    `*_WV` arrays no longer exist. The reader assumes they do.
+
+    This path resolves geolocation per channel: `*_WV` when present, the
+    main arrays otherwise. It returns brightness temperature in kelvin with
+    the off-disk fill masked to NaN.
+    """
+    import h5py
+
+    p = Path(path)
+    if not p.exists():
+        raise FileNotFoundError(f"no INSAT file at {p}")
+
+    out = {}
+    with h5py.File(p, "r") as fh:
+        for ch in channels:
+            img, lut = f"IMG_{ch}", f"IMG_{ch}_TEMP"
+            if img not in fh:
+                raise KeyError(f"{p.name} has no {img}; found {sorted(fh.keys())[:12]}")
+            if lut not in fh:
+                raise KeyError(f"{p.name} has no {lut} -- cannot convert counts to "
+                               f"brightness temperature without the lookup table")
+            counts = np.asarray(fh[img][0], dtype=np.int32)
+            table = np.asarray(fh[lut][:], dtype=np.float64)
+            bt = table[np.clip(counts, 0, table.size - 1)]
+            bt[counts == INSAT_FILL_COUNT] = np.nan
+
+            lat_key = f"Latitude_{ch}" if f"Latitude_{ch}" in fh else "Latitude"
+            lon_key = f"Longitude_{ch}" if f"Longitude_{ch}" in fh else "Longitude"
+            lat = np.asarray(fh[lat_key][:], dtype=np.float64)
+            lon = np.asarray(fh[lon_key][:], dtype=np.float64)
+            for arr, key in ((lat, lat_key), (lon, lon_key)):
+                sf = fh[key].attrs.get("scale_factor")
+                if sf is not None:
+                    arr *= float(np.asarray(sf).flat[0])
+            out[ch] = {"bt": bt, "lat": lat, "lon": lon,
+                       "geo_source": lat_key}
+    return out
+
+
 def read_scan(path, channels: Sequence[str] = ("TIR1", "WV"),
               calibration: str = "brightness_temperature"):
     """Open one INSAT L1B file with satpy. Returns a satpy Scene."""
@@ -290,12 +420,57 @@ def ingest_scan(path, channels: Sequence[str] = ("TIR1", "WV"),
     see.
     """
     meta = read_metadata(path)
-    scn = read_scan(path, channels)
-    native = {c: np.asarray(scn[c].values, dtype=np.float64) for c in channels}
+    scn, native_geo = None, None
+    try:
+        scn = read_scan(path, channels)
+        native = {c: np.asarray(scn[c].values, dtype=np.float64) for c in channels}
+        reader_used = "satpy"
+    except Exception as e:
+        # satpy fails on INSAT-3DS (missing Longitude_WV). Fall back rather
+        # than losing the current operational satellite entirely.
+        native_geo = read_scan_native(path, channels)
+        native = {c: v["bt"] for c, v in native_geo.items()}
+        reader_used = f"native (satpy failed: {type(e).__name__})"
+    meta = dict(meta) | {"_reader": reader_used}
+    if solar_elevation(meta) is None:
+        # attribute unusable (INSAT-3DS writes denormal garbage) -- recover
+        # illumination from the per-pixel dataset rather than guessing
+        el = solar_elevation_from_dataset(path)
+        if el is not None:
+            meta["Sun_Elevation(Degrees)"] = el
+            meta["_sun_elevation_source"] = "Sun_Elevation dataset (attribute unusable)"
     chk = check_physics(native, metadata=meta)
     if strict:
         chk.raise_if_failed()
-    return resample_to_grid(scn, channels), chk
+    if scn is not None:
+        return resample_to_grid(scn, channels), chk
+    return resample_native_to_grid(native_geo), chk
+
+
+def resample_native_to_grid(native_geo: dict,
+                            radius_of_influence: float = 12000.0) -> dict:
+    """Resample the native-reader output onto the common India grid.
+
+    Each channel carries its own geolocation, which matters: on 3D/3DR the
+    water-vapour channel is on a different (coarser) grid from TIR.
+    """
+    from pyresample.geometry import SwathDefinition
+    from pyresample.kd_tree import resample_nearest
+
+    area = india_area()
+    out = {}
+    for ch, v in native_geo.items():
+        lat, lon, bt = v["lat"], v["lon"], v["bt"]
+        good = (np.isfinite(lat) & np.isfinite(lon)
+                & (np.abs(lat) <= 90) & (np.abs(lon) <= 180))
+        swath = SwathDefinition(lons=np.where(good, lon, np.nan),
+                                lats=np.where(good, lat, np.nan))
+        filled = np.where(np.isfinite(bt), bt, -999.0)
+        r = resample_nearest(swath, filled, area,
+                             radius_of_influence=radius_of_influence,
+                             fill_value=-999.0)
+        out[ch] = np.where(r < 0, np.nan, r).astype(np.float32)
+    return out
 
 
 def fetch_scan(*_args, **_kw):

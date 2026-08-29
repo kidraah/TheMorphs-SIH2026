@@ -77,6 +77,57 @@ class ChannelComparison:
         return float(np.nanmedian(self.differences))
 
     @property
+    def bulk_diff(self) -> float:
+        """Max |difference| across the WARM half (p50 upward).
+
+        Warm percentiles are surface and low cloud: stable over a 15-minute
+        gap and largely insensitive to viewing angle, so a calibration
+        difference shows up here as a steady offset across all of them.
+
+        Deliberately NOT p25-p75: on the real 3DR/3DS pair, p25 (+2.51 K) is
+        already inside the transition into the convective tail, and including
+        it masked an otherwise clean +0.6..+1.0 K offset across p50-p99.9.
+        """
+        q = np.asarray(self.percentiles)
+        d = self.differences[q >= 50.0]
+        return float(np.nanmax(np.abs(d))) if d.size else float("nan")
+
+    @property
+    def bulk_offset(self) -> float:
+        """Median difference across the warm half -- the offset estimate."""
+        q = np.asarray(self.percentiles)
+        d = self.differences[q >= 50.0]
+        return float(np.nanmedian(d)) if d.size else float("nan")
+
+    @property
+    def tail_diff(self) -> float:
+        """Max |difference| in the cold tail (<= p10)."""
+        q = np.asarray(self.percentiles)
+        d = self.differences[q <= 10.0]
+        return float(np.nanmax(np.abs(d))) if d.size else float("nan")
+
+    @property
+    def tail_dominated(self) -> bool:
+        """Bulk agrees but the cold tail does not.
+
+        Measured on a real 3DR/3DS pair 15 min apart: p25-p99.9 within
+        ~1 K while p1 differed by 13.4 K. That is NOT the signature of a
+        calibration difference -- calibration shifts the whole distribution.
+        The cold tail is deep convective cloud top, which (a) evolves within
+        the time gap and (b) is strongly parallax- and view-angle-sensitive,
+        and the two satellites sit at different sub-satellite longitudes
+        (3DR 74E, 3DS 82E). One scene pair cannot separate those from
+        calibration.
+        """
+        b, t = self.bulk_diff, self.tail_diff
+        return np.isfinite(b) and np.isfinite(t) and b < 2.0 and t > 3.0 * max(b, 0.3)
+
+    @property
+    def summary_numbers(self) -> str:
+        return (f"warm-half offset {self.bulk_offset:+.2f} K (spread "
+                f"{self.bulk_diff:.2f} K), cold-tail max {self.tail_diff:.2f} K")
+
+    @property
     def is_offset_like(self) -> bool:
         """A constant offset is correctable by normalisation; a varying one
         (a calibration SLOPE) is not, and argues for one satellite only."""
@@ -91,6 +142,8 @@ class ChannelComparison:
         if self.underpowered and m < 2.0:
             # Cannot separate a real difference from tail sampling noise.
             return "underpowered"
+        if self.tail_dominated:
+            return "tail-differs"
         if m < 0.5:
             return "consistent"
         if m < 2.0:
@@ -104,7 +157,15 @@ class ChannelComparison:
         lines.append("   " + "  ".join(f"{d:+.2f}" for d in self.differences))
         lines.append(f"   median diff {self.median_diff:+.2f} K, "
                      f"max |diff| {self.max_abs_diff:.2f} K -> {self.verdict.upper()}")
-        if self.verdict == "underpowered":
+        if self.verdict == "tail-differs":
+            lines.append(f"   -> {self.summary_numbers}. Calibration "
+                         f"shifts the WHOLE distribution, so a tail-only divergence is "
+                         f"more likely "
+                         f"convective evolution across the time gap plus parallax "
+                         f"from different sub-satellite longitudes. INCONCLUSIVE from "
+                         f"one scene pair -- repeat over many coincident pairs, "
+                         f"preferably clear-sky, before deciding.")
+        elif self.verdict == "underpowered":
             lines.append(f"   -> only {min(self.n_a, self.n_b):,} pixels; the tail "
                          f"percentiles are sampling noise below ~{MIN_RELIABLE_N:,}. "
                          f"Compare full scans, not crops -- a small sample can "
@@ -137,6 +198,11 @@ class CrossSatelliteReport:
         return any(c.verdict in ("shape-differs", "large") for c in self.comparisons)
 
     @property
+    def inconclusive(self) -> bool:
+        return any(c.verdict in ("tail-differs", "underpowered")
+                   for c in self.comparisons)
+
+    @property
     def underpowered(self) -> bool:
         return any(c.verdict == "underpowered" for c in self.comparisons)
 
@@ -144,7 +210,13 @@ class CrossSatelliteReport:
         lines = ["cross-satellite consistency", ""]
         lines += [c.report() for c in self.comparisons]
         lines.append("")
-        if self.underpowered:
+        if any(c.verdict == "tail-differs" for c in self.comparisons):
+            lines.append("VERDICT: INCONCLUSIVE -- the bulk agrees and only the cold "
+                         "tail differs, which one scene pair cannot separate from "
+                         "convective evolution and parallax. Repeat over many "
+                         "coincident pairs before deciding. Meanwhile 3RIMG alone "
+                         "spans the whole archive, so training need not wait on this.")
+        elif self.underpowered:
             lines.append("VERDICT: INCONCLUSIVE -- too few pixels to separate "
                          "calibration from sampling noise. Re-run on full scans.")
         elif self.safe_to_mix:

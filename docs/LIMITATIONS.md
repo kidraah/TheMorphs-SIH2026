@@ -87,3 +87,41 @@ field legitimately piles 85% of its pixels at exactly 0.0.
 
 **Standing rule: run it on every new data source before trusting that
 source.** Assume IMERG and INSAT L1B each hide one we have not met yet.
+
+## 6. The 0.80 FAR ceiling is a placeholder, not an analysis
+
+`TrainConfig.far_ceiling = 0.80` is **arbitrary**. It was chosen because it
+is materially better than the 0.997 an unconstrained SEDI optimum produces,
+not because anyone has costed it.
+
+What would justify a number: a false-alarm ratio ceiling follows from the
+cost ratio between a missed event and a false alarm. If a missed cloudburst
+costs `C_miss` and a false warning costs `C_fa`, the decision-theoretic
+threshold is where the expected costs balance, which for a rare event with
+base rate `p` gives an acceptable FAR of roughly
+
+    FAR* ≈ 1 / (1 + (C_miss / C_fa) · (p / (1 - p)))
+
+so the ceiling depends on both the cost ratio **and** the base rate — meaning
+each head deserves its own, not one shared number.
+
+The inputs we do not have:
+
+- **Cost of a missed cloudburst.** Not purely monetary; the Kedarnath and
+  Wayanad events carried casualties in the hundreds.
+- **Cost of a false evacuation.** Direct cost, plus the harder-to-quantify
+  erosion of response: a community that is evacuated repeatedly for nothing
+  stops evacuating. That is a *dynamic* cost — it rises with each false
+  alarm — which a single static ratio does not capture.
+- **Who acts on the alert.** A district officer pre-positioning resources
+  tolerates a far higher FAR than a public evacuation order. These are
+  different products with different ceilings, from the same model.
+
+Until those exist, **0.80 is a placeholder and should be described as one**.
+At 45% false alarms — the constrained cloudburst point measured on SEVIR —
+nearly one warning in two is wrong. That may well be acceptable for
+resource pre-positioning and clearly is not for evacuation.
+
+The right people to set this are IMD / NDMA, not us. Until they do, report
+both operating points and let the reader see the trade rather than
+presenting either as *the* answer.
