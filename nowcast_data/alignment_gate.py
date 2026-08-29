@@ -240,3 +240,52 @@ def run_gate(scenes: list, grid_km: float = 4.0) -> GateResult:
 
     res.verdict = "PASS" if ok else "FAIL"
     return res
+
+
+# ---------------------------------------------------------------------------
+# Scene selection -- run BEFORE the gate, not after
+# ---------------------------------------------------------------------------
+#
+# The gate returns INCONCLUSIVE on a day with no convection, which is correct
+# but wastes a cycle. Worse, a day with plenty of BROAD rain also fails to
+# identify an offset: stratiform shields overlap at any small shift, so the
+# agreement surface is flat. Measured on 2025-08-01 2345Z -- 87k cold cells,
+# 72k wet cells, and a peak/zero ratio of only 1.04.
+#
+# What identifies an offset is CELLULAR convection: many separate heavy cores,
+# each a sharp feature whose displacement is unambiguous. So candidate scenes
+# are scored on core count x heavy fraction, and the best are chosen before
+# any INSAT scan is downloaded.
+
+CELLULARITY_HEAVY_MM_HR = 5.0
+
+
+def scene_cellularity(rain_mmhr, lats=None, lons=None, box=None) -> dict:
+    """Score a candidate IMERG granule for alignment usefulness.
+
+    Returns wet/heavy fractions, the number of separate heavy cores, and a
+    combined score. Higher is better: many distinct cores give a sharp peak.
+    """
+    from scipy import ndimage
+
+    r = np.asarray(rain_mmhr, dtype=np.float64)
+    if lats is not None and lons is not None and box is not None:
+        la = (lats >= box[1]) & (lats <= box[3])
+        lo = (lons >= box[0]) & (lons <= box[2])
+        r = r[np.ix_(la, lo)]
+
+    v = r[np.isfinite(r)]
+    if v.size == 0:
+        return dict(wet_pct=0.0, heavy_pct=0.0, cores=0, max_mm_hr=0.0, score=0.0)
+
+    heavy = np.nan_to_num(r) >= CELLULARITY_HEAVY_MM_HR
+    lab, n = ndimage.label(heavy)
+    heavy_pct = 100.0 * float((v >= CELLULARITY_HEAVY_MM_HR).mean())
+    return dict(wet_pct=100.0 * float((v >= 0.5).mean()),
+                heavy_pct=heavy_pct, cores=int(n), max_mm_hr=float(v.max()),
+                score=float(n) * heavy_pct)
+
+
+def rank_candidate_scenes(scored: dict, n: int = 6) -> list:
+    """Best n candidates by cellularity. `scored` maps label -> scene_cellularity()."""
+    return sorted(scored.items(), key=lambda kv: -kv[1]["score"])[:n]

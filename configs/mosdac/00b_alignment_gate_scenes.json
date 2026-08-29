@@ -1,0 +1,45 @@
+{
+  "_purpose": "The ALIGNMENT GATE scene set. This is the check that clears all Indian training data, so it comes before any bulk pull.",
+  "_why_this_day": "2025-08-01 is peak monsoon AND we already hold one 3DR scan from it (2345Z). IMERG for the whole day is already downloaded and verified.",
+  "_why_these_times": "Chosen from measured IMERG convection, not guessed. The gate needs a SHARP agreement peak, which comes from many separate heavy cores (cellular convection) rather than from a large rain area -- broad stratiform rain overlaps at any small offset and gives a flat, unidentifiable peak. That is exactly what happened on the 2345Z scene: peak/zero ratio 1.04x, below the 1.15x bar.",
+
+  "user_credentials": {"username": "", "password": ""},
+
+  "search_parameters": {
+    "datasetId": "3RIMG_L1B_STD",
+    "startTime": "2025-08-01",
+    "endTime": "2025-08-01",
+    "count": "",
+    "boundingBox": "62.3,5.8,101.7,39.5",
+    "gId": ""
+  },
+
+  "download_settings": {
+    "download_path": "data/insat/alignment_gate",
+    "organize_by_date": true,
+    "skip_user_prompt": false,
+    "generate_error_log": true,
+    "error_log_path": "data/insat/logs"
+  },
+
+  "_KEEP_THESE_SCAN_TIMES_UTC": [
+    "2245",
+    "2115",
+    "1815",
+    "1945",
+    "1045",
+    "1215"
+  ],
+  "_already_held": "2345 (3RIMG_01AUG2025_2345_L1B_STD_V01R00.h5) -- 7 scenes total, gate needs >= 5",
+  "_scan_schedule": "INSAT-3DR full-disk scans at HH:15 and HH:45. Each falls inside the IMERG half-hour granule beginning at HH:00 or HH:30, so the pairing is exact.",
+  "_imerg_pairing": {
+    "2245": "IMERG 2230-2259  (152 heavy cores -- most cellular of the day)",
+    "2115": "IMERG 2100-2129  (156 cores)",
+    "1815": "IMERG 1800-1829  (156 cores)",
+    "1945": "IMERG 1930-1959  (106 cores)",
+    "1045": "IMERG 1030-1059  (170 cores)",
+    "1215": "IMERG 1200-1229  (169 cores)",
+    "2345": "IMERG 2330-2359  (already measured: offset consistent with parallax, but unidentifiable alone)"
+  },
+  "_if_the_day_download_is_too_large": "A full-disk scan is ~430 MB and a day is 48 of them (~20 GB) before the bbox is applied. If the bbox subset is still too large, the six times above are the ones that matter -- the rest can be discarded."
+}

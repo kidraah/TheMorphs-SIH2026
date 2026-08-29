@@ -153,16 +153,108 @@ def ingest(path, strict: bool = True) -> tuple[np.ndarray, list]:
     return resample_to_grid(scan), checks
 
 
-def fetch(*_args, **_kw):
-    """Not implemented -- see nowcast_data.insat.fetch_scan for the reasoning.
+GES_DISC_ROOT = "https://gpm1.gesdisc.eosdis.nasa.gov/data/GPM_L3"
+IMERG_FINAL = "GPM_3IMERGHH.07"
 
-    GES DISC needs an Earthdata Login plus a one-time application
-    authorisation, and the archive path embeds the product version, which
-    changes. Download a day by hand from
-    https://disc.gsfc.nasa.gov (credentials in .env), then pass local paths
-    to `ingest`.
+
+class _EarthdataSession:
+    """requests.Session that survives the GES DISC -> URS redirect.
+
+    GES DISC redirects to urs.earthdata.nasa.gov to authenticate, then back.
+    A plain Session re-sends the Authorization header to the redirected host,
+    which the archive rejects. This is NASA's documented workaround: drop the
+    header on a cross-host redirect unless one end is the auth host.
     """
-    raise NotImplementedError(
-        "IMERG fetch is not implemented -- download from GES DISC and pass "
-        "local paths to ingest(). Requires EARTHDATA_USERNAME/PASSWORD and a "
-        "one-time 'NASA GESDISC DATA ARCHIVE' app authorisation.")
+
+    AUTH_HOST = "urs.earthdata.nasa.gov"
+
+    def __new__(cls, username, password):
+        import requests
+
+        class S(requests.Session):
+            def rebuild_auth(self, prepared_request, response):
+                headers = prepared_request.headers
+                if "Authorization" not in headers:
+                    return
+                orig = requests.utils.urlparse(response.request.url).hostname
+                new = requests.utils.urlparse(prepared_request.url).hostname
+                if orig != new and new != cls.AUTH_HOST and orig != cls.AUTH_HOST:
+                    del headers["Authorization"]
+
+        s = S()
+        s.auth = (username, password)
+        return s
+
+
+def granule_url(when, product: str = IMERG_FINAL, version: str = "V07B") -> str:
+    """Archive URL for one half-hourly granule.
+
+    Filenames encode the half-open window and a minutes-since-midnight index,
+    e.g. ...-S234000-E235959.1410.V07B.HDF5 for 23:40-23:59. Getting that
+    index wrong yields a 404, not a wrong file.
+    """
+    import pandas as pd
+
+    t = pd.Timestamp(when)
+    start = t.floor("30min")
+    end = start + pd.Timedelta(minutes=29, seconds=59)
+    minutes = start.hour * 60 + start.minute
+    name = (f"3B-HHR.MS.MRG.3IMERG.{start:%Y%m%d}"
+            f"-S{start:%H%M%S}-E{end:%H%M%S}.{minutes:04d}.{version}.HDF5")
+    return f"{GES_DISC_ROOT}/{product}/{start:%Y}/{start.dayofyear:03d}/{name}"
+
+
+def fetch(when, dest_dir, product: str = IMERG_FINAL, version: str = "V07B",
+          overwrite: bool = False, timeout: int = 300):
+    """Download one IMERG granule. Returns the local path.
+
+    Requires EARTHDATA_USERNAME / EARTHDATA_PASSWORD (see .env) AND a one-time
+    authorisation of "NASA GESDISC DATA ARCHIVE" in the Earthdata profile --
+    without it the archive returns a redirect loop rather than a clear 401.
+    """
+    from pathlib import Path as _P
+
+    from .credentials import get
+
+    url = granule_url(when, product, version)
+    dest = _P(dest_dir) / url.rsplit("/", 1)[-1]
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if dest.exists() and not overwrite and dest.stat().st_size > 0:
+        return dest
+
+    session = _EarthdataSession(get("EARTHDATA_USERNAME"), get("EARTHDATA_PASSWORD"))
+    r = session.get(url, stream=True, timeout=timeout)
+    if r.status_code == 401:
+        raise PermissionError(
+            f"401 from GES DISC. Credentials are set, so this is almost always "
+            f"the missing app authorisation: Earthdata profile -> Applications "
+            f"-> Authorized Apps -> approve 'NASA GESDISC DATA ARCHIVE'.")
+    if r.status_code == 404:
+        raise FileNotFoundError(
+            f"404 for {url}\nFinal-run IMERG lags ~3.5 months; for recent dates "
+            f"use GPM_3IMERGHHL (Late) or GPM_3IMERGHHE (Early) -- but do NOT "
+            f"mix runs within one training set, their biases differ.")
+    r.raise_for_status()
+
+    tmp = dest.with_suffix(dest.suffix + ".part")
+    with open(tmp, "wb") as fh:
+        for chunk in r.iter_content(chunk_size=1 << 20):
+            fh.write(chunk)
+    tmp.replace(dest)
+    return dest
+
+
+def fetch_day(date, dest_dir, times=None, **kw) -> list:
+    """Fetch granules for one day. `times` limits to specific HH:MM strings."""
+    import pandas as pd
+
+    d = pd.Timestamp(date).normalize()
+    slots = ([d + pd.Timedelta(minutes=30 * i) for i in range(48)] if times is None
+             else [pd.Timestamp(f"{d:%Y-%m-%d} {t}") for t in times])
+    out = []
+    for t in slots:
+        try:
+            out.append(fetch(t, dest_dir, **kw))
+        except Exception as e:
+            print(f"  {t:%H:%M} FAILED {type(e).__name__}: {str(e)[:110]}")
+    return out

@@ -249,9 +249,45 @@ def test_negative_rain_is_caught(tmp_path):
     assert checks["no negative rain"] is False
 
 
-def test_imerg_fetch_is_not_silently_faked():
-    with pytest.raises(NotImplementedError, match="GES DISC"):
-        imerg.fetch()
+def test_imerg_granule_url_encodes_the_window_and_index():
+    """IMERG filenames carry a half-open window AND a minutes-since-midnight
+    index. Getting the index wrong yields a 404, not a wrong file."""
+    u = imerg.granule_url("2025-08-01T23:45")
+    assert "/2025/213/" in u, "day-of-year 213 for 1 Aug 2025"
+    assert "S233000-E235959" in u, "the granule containing 23:45"
+    assert ".1410." in u, "1410 minutes since midnight = 23:30"
+    assert u.endswith(".HDF5")
+
+
+def test_granule_url_floors_to_the_containing_half_hour():
+    for t, want in (("2025-08-01T00:00", "S000000-E002959"),
+                    ("2025-08-01T00:29", "S000000-E002959"),
+                    ("2025-08-01T00:30", "S003000-E005959"),
+                    ("2025-08-01T12:15", "S120000-E122959")):
+        assert want in imerg.granule_url(t), t
+
+
+REAL_IMERG = Path("data/imerg/3B-HHR.MS.MRG.3IMERG.20250801-S233000-E235959"
+                  ".1410.V07B.HDF5")
+
+
+@pytest.mark.skipif(not REAL_IMERG.exists(), reason="IMERG granule not downloaded")
+def test_real_imerg_granule_passes_every_check():
+    """Sixth data source through the standing rule. Clean."""
+    s = imerg.read_precipitation(REAL_IMERG)
+    failures = [(n, d) for n, ok, d in imerg.check_physics(s) if not ok]
+    assert not failures, failures
+    assert s.variable == "Grid/precipitation"
+
+
+@pytest.mark.skipif(not REAL_IMERG.exists(), reason="IMERG granule not downloaded")
+def test_real_imerg_zero_mode_is_not_flagged_as_a_sentinel():
+    """87% of a real rain field is exactly 0.0. That is the legitimate dry
+    boundary mode, and the detector must not call it a fill value."""
+    s = imerg.read_precipitation(REAL_IMERG)
+    r = detect_pileups(s.rate_mmhr[np.isfinite(s.rate_mmhr)], min_fraction=0.0005)
+    assert not r.has_suspicious, r.report("imerg")
+    assert r.pileups[0].value == 0.0 and r.pileups[0].fraction > 0.5
 
 
 # --------------------------------------------------------------------------
@@ -743,3 +779,76 @@ def test_inconsistent_offsets_fail_even_if_the_median_is_small():
     r = ag.run_gate(s)
     assert r.verdict == "FAIL"
     assert any("scatter" in x or "spread" in x for x in r.reasons)
+
+
+def test_cellularity_prefers_many_cores_over_one_broad_shield():
+    """What identifies an alignment offset is CELLULAR convection. A broad
+    stratiform shield overlaps at any small shift and gives a flat peak --
+    measured at 1.04x on the real 2345Z scene."""
+    broad = np.zeros((200, 200)); broad[60:140, 60:140] = 8.0      # one shield
+    cellular = np.zeros((200, 200))
+    rng = np.random.default_rng(0)
+    for _ in range(40):                                            # many cores
+        y, x = rng.integers(10, 190, 2)
+        cellular[y-3:y+3, x-3:x+3] = 8.0
+
+    b = ag.scene_cellularity(broad)
+    c = ag.scene_cellularity(cellular)
+    assert c["cores"] > 10 * b["cores"]
+    assert c["score"] > b["score"], "cellular must outrank broad rain"
+
+
+def test_dry_scene_scores_zero():
+    assert ag.scene_cellularity(np.zeros((50, 50)))["score"] == 0.0
+
+
+def test_ranking_picks_the_most_cellular():
+    rng = np.random.default_rng(1)
+    scored = {}
+    for i, ncore in enumerate((2, 40, 15)):
+        a = np.zeros((150, 150))
+        for _ in range(ncore):
+            y, x = rng.integers(5, 145, 2)
+            a[y-2:y+2, x-2:x+2] = 9.0
+        scored[f"t{i}"] = ag.scene_cellularity(a)
+    assert ag.rank_candidate_scenes(scored, 1)[0][0] == "t1"
+
+
+# --------------------------------------------------------------------------
+# Static zenith channels
+# --------------------------------------------------------------------------
+
+from nowcast_data.static_channels import expected_shift_px, zenith_channels
+
+
+def test_zenith_channel_supplies_direction_not_just_magnitude():
+    """Parallax has a bearing: away from the sub-satellite point. West of it
+    the shift is WESTWARD. Magnitude alone would lose that, leaving the model
+    to infer the bearing from position -- the inference we are saving it."""
+    from nowcast_data.grids import india_area
+    ch = zenith_channels(sub_lon=74.0)
+    area = india_area()
+
+    def at(lat, lon, k):
+        x, y = area.get_array_indices_from_lonlat(lon, lat)
+        return float(ch[k][int(y), int(x)])
+
+    assert at(23.7, 68.5, "parallax_dx") < 0, "west of 74E shifts westward"
+    assert at(22.6, 88.4, "parallax_dx") > 0, "east of 74E shifts eastward"
+    assert at(34.2, 75.5, "parallax_dy") > at(8.1, 77.5, "parallax_dy"), \
+        "northward shift grows with latitude"
+
+
+def test_zenith_channel_matches_measured_geometry():
+    from nowcast_data.grids import india_area
+    ch = zenith_channels(sub_lon=74.0)
+    area = india_area()
+    x, y = area.get_array_indices_from_lonlat(75.5, 34.2)
+    shift_px = float(ch["tan_zenith"][int(y), int(x)]) * 12.0 / 4.0
+    assert 2.2 < shift_px < 2.8, f"Kashmir 12 km top should shift ~2.5 px, got {shift_px}"
+
+
+def test_channels_are_on_the_analysis_grid():
+    ch = zenith_channels()
+    assert all(v.shape == (912, 864) for v in ch.values())
+    assert np.isfinite(ch["tan_zenith"]).all()
