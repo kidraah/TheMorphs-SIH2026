@@ -81,12 +81,17 @@ def build_flow_grid(direction: np.ndarray) -> FlowGrid:
     return FlowGrid(direction=d, downstream=down, shape=(h, w))
 
 
-def _topological_order(fg: FlowGrid) -> np.ndarray:
-    """Cells ordered headwaters-first (Kahn's algorithm on the D8 tree).
+def topological_levels(fg: FlowGrid) -> list[np.ndarray]:
+    """Kahn waves: level k contains cells whose upstream is all in < k.
 
-    Iterative on purpose. A recursive walk overflows the stack on a real
-    tile -- an India tile is ~10^8 cells and the Ganga's main stem is a
-    single chain hundreds of thousands of cells long.
+    Returned as WAVES rather than a flat order because accumulation then
+    vectorises. A per-cell Python loop is O(N) interpreter steps, and a
+    single MERIT tile is 6000x6000 = 36 million cells -- correct, and far
+    too slow to ever run on real data, which is its own kind of untested.
+
+    Iterative on purpose either way: a recursive walk overflows the stack,
+    since the Ganga's main stem is one chain hundreds of thousands of cells
+    long.
     """
     n = fg.n
     down = fg.downstream
@@ -94,50 +99,82 @@ def _topological_order(fg: FlowGrid) -> np.ndarray:
     has_down = down >= 0
     np.add.at(indeg, down[has_down], 1)
 
-    order = np.empty(n, dtype=np.int64)
-    queue = np.flatnonzero(indeg == 0)
-    filled = 0
-    while queue.size:
-        order[filled:filled + queue.size] = queue
-        filled += queue.size
-        nxt = down[queue]
+    waves, seen = [], 0
+    frontier = np.flatnonzero(indeg == 0)
+    while frontier.size:
+        waves.append(frontier)
+        seen += frontier.size
+        nxt = down[frontier]
         nxt = nxt[nxt >= 0]
         if nxt.size == 0:
             break
         np.subtract.at(indeg, nxt, 1)
-        queue = np.unique(nxt[indeg[nxt] == 0])
-    if filled != n:
-        # A cycle means the direction raster is not a tree -- almost always a
-        # wrong convention or a bad nodata fill, so say which.
+        frontier = np.unique(nxt[indeg[nxt] == 0])
+    if seen != n:
         raise ValueError(
-            f"flow direction contains a cycle: {n - filled} of {n} cells are "
+            f"flow direction contains a cycle: {n - seen} of {n} cells are "
             f"unreachable headwaters-first. A D8 field must be acyclic; check "
             f"the direction encoding and nodata handling.")
-    return order[:filled]
+    return waves
+
+
+def _topological_order(fg: FlowGrid) -> np.ndarray:
+    """Flat headwaters-first order. Kept for callers that need a sequence."""
+    return np.concatenate(topological_levels(fg))
 
 
 def flow_accumulate(fg: FlowGrid, weight: np.ndarray | None = None,
-                    order: np.ndarray | None = None) -> np.ndarray:
+                    levels: list | None = None) -> np.ndarray:
     """Accumulate `weight` downstream. Default weight 1 => cell counts.
 
     This is the workhorse: with weight = cell area it reproduces `upa`, and
     with weight = runoff volume it produces the routed flood volume, which
     is the whole point of having it.
+
+    Vectorised over Kahn waves: one `np.add.at` per wave instead of one
+    Python step per cell. A cell enters a wave only once every upstream
+    contributor has been processed, so its value is final when its wave is
+    pushed downstream -- the same invariant the per-cell loop relied on.
     """
-    order = _topological_order(fg) if order is None else order
-    w = (np.ones(fg.n, dtype=np.float64) if weight is None
-         else np.asarray(weight, dtype=np.float64).ravel().copy())
-    acc = w.copy()
+    levels = topological_levels(fg) if levels is None else levels
+    acc = (np.ones(fg.n, dtype=np.float64) if weight is None
+           else np.asarray(weight, dtype=np.float64).ravel().astype(np.float64))
+    acc = acc.copy()
     down = fg.downstream
-    for i in order:                      # headwaters first: each cell final
-        j = down[i]                      # when reached
-        if j >= 0:
-            acc[j] += acc[i]
+    for wave in levels:
+        j = down[wave]
+        ok = j >= 0
+        if ok.any():
+            np.add.at(acc, j[ok], acc[wave[ok]])
     return acc.reshape(fg.shape)
 
 
+def boundary_contaminated(fg: FlowGrid, levels: list | None = None) -> np.ndarray:
+    """Cells whose catchment extends beyond this tile.
+
+    MERIT's `upa` is computed on the global mosaic, so at a tile edge it
+    counts area that is not in the tile. Comparing those cells against a
+    tile-local accumulation would report a disagreement that is an artefact
+    of the crop, not of the routing -- and it would look exactly like a
+    wrong D8 convention, which is the thing the comparison exists to detect.
+    """
+    levels = topological_levels(fg) if levels is None else levels
+    h, w = fg.shape
+    flag = np.zeros(fg.n, dtype=bool)
+    edge = np.zeros(fg.shape, dtype=bool)
+    edge[0, :] = edge[-1, :] = edge[:, 0] = edge[:, -1] = True
+    flag |= edge.ravel()
+    down = fg.downstream
+    for wave in levels:
+        j = down[wave]
+        ok = (j >= 0) & flag[wave]
+        if ok.any():
+            flag[j[ok]] = True
+    return flag.reshape(fg.shape)
+
+
 def verify_against_upa(fg: FlowGrid, upa_km2: np.ndarray, cell_area_km2,
-                       tol: float = 0.02) -> dict:
+                       tol: float = 0.02, exclude_boundary: bool = True) -> dict:
     """Gate: does accumulation from `dir` reproduce MERIT's own `upa`?
 
     Agreement is the only cheap evidence that the direction convention above
@@ -147,20 +184,43 @@ def verify_against_upa(fg: FlowGrid, upa_km2: np.ndarray, cell_area_km2,
     """
     area = (np.full(fg.shape, float(cell_area_km2))
             if np.isscalar(cell_area_km2) else np.asarray(cell_area_km2))
-    mine = flow_accumulate(fg, area)
+    levels = topological_levels(fg)
+    mine = flow_accumulate(fg, area, levels)
     theirs = np.asarray(upa_km2, dtype=np.float64)
     valid = np.isfinite(theirs) & (theirs > 0) & np.isfinite(mine)
+    if exclude_boundary:
+        valid &= ~boundary_contaminated(fg, levels)
     if not valid.any():
         return {"passed": False, "reason": "no valid cells to compare"}
     rel = np.abs(mine[valid] - theirs[valid]) / theirs[valid]
     frac = float(np.mean(rel <= tol))
+
+    # Separate a ROUTING error from a UNITS error. If the two accumulations
+    # differ by a constant factor, the ratio has near-zero spread and the
+    # disagreement is the cell-area constant -- MERIT's own convention, not
+    # a wrong D8 reading. A transposed or reversed convention sends water to
+    # different cells, which shows up as a wide ratio distribution, not an
+    # offset. Reporting only a mean error cannot tell these apart, and they
+    # have opposite consequences.
+    ratio = mine[valid] / theirs[valid]
+    scale = float(np.median(ratio))
+    spread = float(np.percentile(ratio, 84) - np.percentile(ratio, 16)) / 2
+    rel_after_scale = np.abs(ratio / scale - 1.0)
     return {
+        "scale_offset": scale,
+        "scale_spread": spread,
+        "median_rel_error_after_rescale": float(np.median(rel_after_scale)),
+        "verdict": ("routing exact; residual is a cell-area constant"
+                    if spread < 0.01 else
+                    "ratio is DISPERSED -- water is going to different cells, "
+                    "which is a routing error, not a units error"),
         "passed": bool(frac >= 0.95),
         "fraction_within_tol": frac,
         "median_rel_error": float(np.median(rel)),
         "p99_rel_error": float(np.percentile(rel, 99)),
         "tol": tol,
         "n_compared": int(valid.sum()),
+        "boundary_excluded": bool(exclude_boundary),
         "reason": ("" if frac >= 0.95 else
                    "accumulation does not reproduce upa -- the D8 convention "
                    "in flow.py is probably wrong (transposed axes or reversed "

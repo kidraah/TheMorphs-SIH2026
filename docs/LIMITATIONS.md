@@ -274,34 +274,75 @@ count), and add a cross-attention sub-layer per block. Cost is small because
 the key/value set is tiny relative to the queries.
 
 
-## 8. The flood track routes on an UNVERIFIED flow-direction convention
+## 8. CLOSED: flow-direction convention verified against MERIT's own `upa`
 
 `nowcast_flood` is deterministic physics end to end — SCS curve number,
 D8 routing, reach-catchment sub-basins, Kirpich timing, HAND exposure — and
 every piece is tested against a hand-checkable answer or a conservation law.
 
-**But no real flow-direction raster has ever been read here.** MERIT `dir`
-is not downloaded (only `hnd` and `upa` are; see
-[FLOOD_DATA.md](FLOOD_DATA.md)). The D8 encoding in `flow.py` is taken from
-documentation, and a transposed or reversed reading would still route, still
-delineate basins, and still return plausible discharges and arrival times.
-It is the project's recurring bug class with a raster instead of a sentinel.
+**Gate passed.** `scripts/verify_flow_direction.py` recomputes accumulation
+from `dir` and compares it to MERIT's own `upa`, on two tiles of very
+different terrain:
 
-**Gate:** `verify_against_upa()` recomputes accumulation from `dir` and
-checks it reproduces MERIT's own `upa`. Nothing from the flood track should
-be quoted until that passes.
+| tile | scale offset | ratio spread | error after rescale | n compared |
+|---|---|---|---|---|
+| n15e075 (Western Ghats) | 1.00359 | 5.7e-5 | 4.2e-5 | 3,965,913 |
+| n30e080 (Himalaya) | 1.00160 | 8.9e-5 | 6.5e-5 | 3,956,384 |
 
-## 9. Kirpich is applied two orders of magnitude outside its fitted range
+The ESRI D8 convention in `flow.py` is correct — **not transposed**.
+
+The gate reports scale offset and ratio *spread* separately, because they
+mean opposite things. A transposed or reversed convention sends water to
+different cells, which disperses the ratio. A constant offset with
+near-zero spread is a units difference. Here the spread is ~6e-5 and the
+offset shrinks with latitude, so the residual is MERIT's cell-area
+convention, not routing. A gate reporting only mean error could not have
+told those apart.
+
+Cells whose catchment crosses the tile edge are excluded: MERIT's `upa` is
+computed on the global mosaic and counts area outside the tile, which would
+look exactly like a routing error.
+
+**Still open:** the ~0.2-0.4% area offset. Basin area scales discharge
+linearly (`q_p = 0.208 A Q / T_p`), so it is a systematic 0.3% bias in
+discharge — small, but it is a known constant rather than an unknown, and
+should be reconciled against MERIT's documented area computation.
+
+## 9. Warning lead time: methods disagree by 1.7x, and that IS the uncertainty
 
 Kirpich (1940) was fitted on seven Tennessee agricultural watersheds of
-**0.4–45 hectares** (0.004–0.45 km²). The sub-basins here begin at the
-channel threshold, typically 25 km², and run to hundreds of km².
+**0.4–45 hectares** (0.004–0.45 km²). Our sub-basins begin at the channel
+threshold, typically 25 km². Reporting the out-of-range fraction was honest
+but did not make the numbers right, so **Kirpich is no longer the default**.
 
-The arrival times are therefore a **screening estimate and an ordering**,
-not defensible absolute lead times, and `TimingResult.report()` states the
-fraction of basins outside the fitted range on every call. Closing this
-means checking predicted arrival times against observed IMD/CWC flood
-arrivals for gauged events — which is a validation task, not a code task.
+| method | fitted range (km²) | brackets our basins? |
+|---|---|---|
+| Kirpich (1940) | 0.004 – 0.45 | no, 2 orders low |
+| **Watt & Chow (1985)** | **0.01 – 5840** | **yes — the default** |
+| Giandotti (1934) | 10 – 1000 | yes |
+
+Watt & Chow is the same kind of empirical regression as Kirpich, but the
+regression was run on 44 watersheds that span our sizes. Giandotti is kept
+because it fails *differently*: it uses basin relief rather than channel
+slope, so it is not a third view of the same error.
+
+On a 50 km² basin with a 12 km channel at 1.5%, 60 min of rain:
+
+    kirpich      T_p 111 min   (out of range)
+    watt_chow    T_p 133 min
+    giandotti    T_p 185 min
+    ensemble     111 - 185 min, spread 1.66x
+
+**That spread is the honest uncertainty on a warning lead time.** `route()`
+returns `arrival_low_min` and `arrival_high_min` alongside the point value
+for this reason: three independent regressions disagreeing by 1.7x is
+information an operator needs, and publishing whichever was coded first, to
+the minute, is not.
+
+**Still open:** none of the three is *validated* here. Closing it means
+checking predicted arrival against observed IMD/CWC arrival for gauged
+events — a validation task, not a code task. Until then the band is a
+defensible range and the point value is not a defensible minute.
 
 Two further assumptions kept in the open: Kirpich assumes an unlined natural
 channel (lined urban channels run ~0.4×, dense overland grass ~2×), and the
@@ -316,3 +357,30 @@ envelope, `q ~ 0.5 A^0.8`. It makes the risk scale *defined*, not
 *defensible* — the same status as the 0.80 FAR ceiling in #6. Replace it
 with CWC gauged bankfull discharges before any risk number is published.
 The reference actually used is recorded in `FloodForecast.meta`.
+
+
+## 11. AMC is an input now, and it changes the cache fingerprint
+
+Antecedent moisture moves runoff by **15.3x** on identical rain (80 mm on
+CN 70: 2.8 mm dry, 42.2 mm wet). That is larger than the spread the rainfall
+model itself is likely to produce, so a fixed AMC does not make the flood
+head approximately right — it makes it wrong in one direction about half the
+time, and wrong in the *under-forecasting* direction on exactly the
+saturated-catchment days flash floods happen.
+
+So AMC is derived from the 5-day antecedent IMERG accumulation
+(`nowcast_flood.antecedent`), which makes it **another input channel**. It
+must be in the frozen cache config before bulk ingest; adding it afterwards
+changes the fingerprint and forces a re-cache.
+
+Two details that are easy to get wrong and are tested:
+
+* The 5-day window **excludes the day itself**. Including it leaks the event
+  into its own antecedent condition — a storm raises its own CN and inflates
+  its own runoff, which improves every hindcast and is unavailable at
+  forecast time.
+* The NRCS classes are a step function: 35.5 mm of antecedent rain gives
+  CN 49.5 and 35.7 mm gives CN 70. For an operational product that is a
+  20-CN jump in published risk from 0.2 mm of rain five days ago. The
+  default interpolates through the class anchors instead, reproducing the
+  standard values exactly at the boundaries.

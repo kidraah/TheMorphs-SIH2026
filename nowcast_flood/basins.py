@@ -38,6 +38,7 @@ class Basins:
     channel_length_m: np.ndarray   # (B,)
     channel_slope: np.ndarray      # (B,) dimensionless, nan if no elevation
     outlet_index: np.ndarray       # (B,) flat index of each reach outlet
+    mean_elev_above_outlet_m: np.ndarray | None = None   # (B,) basin relief
 
     @property
     def n(self) -> int:
@@ -118,7 +119,7 @@ def properties(fg: FlowGrid, labels: np.ndarray, cell_area_km2,
     ids = np.unique(lab[lab >= 0])
     if ids.size == 0:
         return Basins(labels, ids, *(np.zeros(0) for _ in range(3)),
-                      np.zeros(0, dtype=np.int64))
+                      np.zeros(0, dtype=np.int64), np.zeros(0))
     index = np.searchsorted(ids, lab.clip(0))
     index = np.where(lab >= 0, index, -1)
     keep = index >= 0
@@ -145,6 +146,7 @@ def properties(fg: FlowGrid, labels: np.ndarray, cell_area_km2,
     outlet[grp[last]] = ch_sorted[last]
 
     slope = np.full(ids.size, np.nan)
+    relief = None
     if elevation_m is not None:
         elev = np.asarray(elevation_m, dtype=np.float64).ravel()
         hi = np.full(ids.size, -np.inf)
@@ -161,7 +163,15 @@ def properties(fg: FlowGrid, labels: np.ndarray, cell_area_km2,
             slope = (hi - lo) / length
         slope = np.where((length > 0) & np.isfinite(hi) & np.isfinite(lo),
                          slope, np.nan)
-    return Basins(np.asarray(labels), ids, area, length, slope, outlet)
+        # Giandotti uses basin RELIEF, not channel slope: the mean elevation
+        # of the whole basin above its outlet. Having a method that fails on
+        # a different quantity is what makes the ensemble spread meaningful
+        # rather than three views of the same error.
+        cnt = np.bincount(index[keep], minlength=ids.size)
+        tot = np.bincount(index[keep], weights=elev[keep], minlength=ids.size)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            relief = np.where(cnt > 0, tot / np.maximum(cnt, 1), np.nan) - lo
+    return Basins(np.asarray(labels), ids, area, length, slope, outlet, relief)
 
 
 def aggregate(field: np.ndarray, basins: Basins, how: str = "mean",

@@ -56,6 +56,15 @@ CHANNEL_FACTORS = {
 }
 
 
+# Fitted area ranges, km^2. These are the reason `method` exists.
+FITTED_RANGE_KM2 = {
+    "kirpich": (0.004, 0.45),      # 7 Tennessee farm watersheds (1940)
+    "watt_chow": (0.01, 5840.0),   # 44 Canadian watersheds (1985)
+    "giandotti": (10.0, 1000.0),   # Italian basins (1934)
+}
+DEFAULT_METHOD = "watt_chow"
+
+
 @dataclass
 class TimingResult:
     t_c_min: np.ndarray          # (B,) time of concentration, minutes
@@ -63,19 +72,21 @@ class TimingResult:
     within_fitted_range: np.ndarray   # (B,) bool
     channel_factor: float
     rain_duration_min: float
+    method: str = DEFAULT_METHOD
 
     def report(self) -> str:
         n = self.t_c_min.size
+        lo, hi = FITTED_RANGE_KM2[self.method]
         out = int(np.sum(~self.within_fitted_range))
         fin = np.isfinite(self.t_peak_min)
-        lines = [f"time to peak: median "
+        lines = [f"time to peak ({self.method}): median "
                  f"{np.nanmedian(self.t_peak_min[fin]) if fin.any() else float('nan'):.0f} min "
                  f"over {int(fin.sum())}/{n} basins"]
         if out:
             lines.append(
-                f"!!  {out}/{n} basins ({100*out/n:.0f}%) are outside Kirpich's "
-                f"fitted range ({KIRPICH_MIN_KM2}-{KIRPICH_MAX_KM2} km^2). These "
-                f"are screening estimates, not defensible lead times.")
+                f"!!  {out}/{n} basins ({100*out/n:.0f}%) are outside "
+                f"{self.method}'s fitted range ({lo}-{hi} km^2). These are "
+                f"screening estimates, not defensible lead times.")
         flat = int(np.sum(~np.isfinite(self.t_c_min)))
         if flat:
             lines.append(f"    {flat} basin(s) have undefined t_c (zero or "
@@ -93,9 +104,48 @@ def time_to_peak(tc_min, rain_duration_min: float) -> np.ndarray:
     return 0.5 * float(rain_duration_min) + 0.6 * tc
 
 
+def _kirpich(L, S, **kw):
+    with np.errstate(invalid="ignore", divide="ignore"):
+        return KIRPICH_C_METRIC * np.power(L, 0.77) * np.power(S, -0.385)
+
+
+def _watt_chow(L, S, **kw):
+    """Watt & Chow (1985): t_c [h] = 0.000326 (L / sqrt(S))^0.79, L in m.
+
+    Fitted on 44 watersheds spanning 0.01 to 5840 km^2, which BRACKETS our
+    sub-basins instead of sitting two orders of magnitude below them. This
+    is the default for that reason alone: it is the same kind of empirical
+    regression as Kirpich, but the regression was actually run on catchments
+    the size of ours.
+    """
+    with np.errstate(invalid="ignore", divide="ignore"):
+        return 60.0 * 0.000326 * np.power(L / np.sqrt(S), 0.79)
+
+
+def _giandotti(L, S, area_km2=None, mean_elev_above_outlet_m=None, **kw):
+    """Giandotti (1934): t_c [h] = (4 sqrt(A) + 1.5 L_km) / (0.8 sqrt(Hm)).
+
+    Designed for 10-1000 km^2 basins. Uses basin RELIEF rather than channel
+    slope, so it fails differently from the other two -- which is the point
+    of having it in the ensemble.
+    """
+    if area_km2 is None or mean_elev_above_outlet_m is None:
+        return np.full(np.shape(L), np.nan)
+    A = np.asarray(area_km2, dtype=np.float64)
+    Hm = np.asarray(mean_elev_above_outlet_m, dtype=np.float64)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        t = (4.0 * np.sqrt(A) + 1.5 * (L / 1000.0)) / (0.8 * np.sqrt(Hm))
+    return 60.0 * np.where(Hm > 0, t, np.nan)
+
+
+METHODS = {"kirpich": _kirpich, "watt_chow": _watt_chow, "giandotti": _giandotti}
+
+
 def time_of_concentration(length_m, slope, area_km2=None,
                           channel: str = "natural",
-                          rain_duration_min: float = 0.0) -> TimingResult:
+                          rain_duration_min: float = 0.0,
+                          method: str = DEFAULT_METHOD,
+                          mean_elev_above_outlet_m=None) -> TimingResult:
     """Kirpich t_c in minutes, with an out-of-range flag per basin.
 
     `t_peak_min` is filled here rather than left to the caller: an earlier
@@ -106,20 +156,51 @@ def time_of_concentration(length_m, slope, area_km2=None,
     """
     if channel not in CHANNEL_FACTORS:
         raise ValueError(f"channel must be one of {sorted(CHANNEL_FACTORS)}")
+    if method not in METHODS:
+        raise ValueError(f"method must be one of {sorted(METHODS)}")
     k = CHANNEL_FACTORS[channel]
     L = np.asarray(length_m, dtype=np.float64)
     S = np.asarray(slope, dtype=np.float64)
-    with np.errstate(invalid="ignore", divide="ignore"):
-        tc = k * KIRPICH_C_METRIC * np.power(L, 0.77) * np.power(S, -0.385)
-    tc = np.where((L > 0) & (S > 0) & np.isfinite(S), tc, np.nan)
+    tc = k * METHODS[method](L, S, area_km2=area_km2,
+                             mean_elev_above_outlet_m=mean_elev_above_outlet_m)
+    tc = np.asarray(tc, dtype=np.float64)
+    needs_slope = method in ("kirpich", "watt_chow")
+    good = (L > 0) & (np.isfinite(S) & (S > 0) if needs_slope else True)
+    tc = np.where(good, tc, np.nan)
 
+    lo, hi = FITTED_RANGE_KM2[method]
     if area_km2 is None:
         ok = np.ones(tc.shape, dtype=bool)
     else:
         a = np.asarray(area_km2, dtype=np.float64)
-        ok = (a >= KIRPICH_MIN_KM2) & (a <= KIRPICH_MAX_KM2)
+        ok = (a >= lo) & (a <= hi)
     return TimingResult(tc, time_to_peak(tc, rain_duration_min), ok, k,
-                        float(rain_duration_min))
+                        float(rain_duration_min), method)
+
+
+def compare_methods(length_m, slope, area_km2=None,
+                    mean_elev_above_outlet_m=None,
+                    rain_duration_min: float = 0.0,
+                    channel: str = "natural") -> dict:
+    """Every method side by side, plus the spread between them.
+
+    The spread is the honest uncertainty on a warning lead time. Three
+    independent empirical regressions disagreeing by a factor of two is
+    information the operator needs; publishing whichever one was coded first,
+    to the minute, is not.
+    """
+    out = {m: time_of_concentration(length_m, slope, area_km2, channel,
+                                    rain_duration_min, m,
+                                    mean_elev_above_outlet_m)
+           for m in METHODS}
+    stack = np.stack([np.asarray(v.t_peak_min, dtype=np.float64)
+                      for v in out.values()])
+    with np.errstate(invalid="ignore"):
+        lo = np.nanmin(stack, axis=0)
+        hi = np.nanmax(stack, axis=0)
+        ratio = np.where(lo > 0, hi / lo, np.nan)
+    return {"methods": out, "t_peak_min_low": lo, "t_peak_min_high": hi,
+            "spread_ratio": ratio}
 
 
 def peak_discharge(runoff_mm, area_km2, t_peak_min) -> np.ndarray:

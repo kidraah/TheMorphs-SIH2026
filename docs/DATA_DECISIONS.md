@@ -132,3 +132,32 @@ like signal.
 
 Note `n30e090` and the northern half of `n30e060` are mostly Tibet/China;
 only the southern strips intersect the AOI.
+
+
+## MERIT `dir` and `elv` are required; HAND cannot substitute for either
+
+An earlier call was to skip `dir` and `elv` and work from `hnd` and `upa`
+alone. That was wrong on both counts, and the reasoning is recorded here
+rather than quietly overwritten, because both mistakes are easy to repeat.
+
+**`dir` (flow direction).** The track routes on MERIT's own D8 field. It is
+not derivable from `hnd` or `upa` — both were *computed from* `dir`, so
+neither carries the routing back. `upa` gives the size of each cell's
+catchment but not its shape or its outlet, which is what sub-basin
+delineation needs.
+
+**`elv` (hydrologically adjusted elevation).** HAND is height above the
+*nearest drainage*, not elevation above datum. It therefore carries **no
+downstream gradient**: two cells on opposite ends of a long river reach can
+both sit 2 m above their local channel while the channel itself drops 200 m
+between them. Channel slope — which every time-of-concentration method needs
+— is a difference of elevations along the channel, and HAND differences
+along a channel are close to zero by construction.
+
+Consequence if it had been skipped: `channel_slope` would be nan, and every
+arrival time with it. The code returns nan rather than substituting a
+default slope, precisely so that this failure is visible instead of
+producing confident wrong warning times.
+
+Both are downloaded (all eight tile groups), and the flow-direction
+convention is verified against `upa` — see LIMITATIONS #8.

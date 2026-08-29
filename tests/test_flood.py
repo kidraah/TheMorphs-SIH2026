@@ -142,11 +142,33 @@ def test_verify_against_upa_catches_a_transposed_convention():
     """The gate that stands in for having no real `dir` tile yet: a wrong
     convention still routes and still returns plausible basins."""
     fg, upa = y_grid()
-    assert verify_against_upa(fg, upa, 1.0)["passed"]
+    # exclude_boundary=False: on a 6x3 toy every cell touches an edge.
+    assert verify_against_upa(fg, upa, 1.0, exclude_boundary=False)["passed"]
     # transposing the direction codes is a realistic misreading
-    wrong = build_flow_grid(Y_DIR.T[:3, :6] if Y_DIR.T.shape == (3, 6) else Y_DIR.T)
-    res = verify_against_upa(wrong, upa.T, 1.0)
-    assert not res["passed"] or res["fraction_within_tol"] < 1.0
+    wrong = build_flow_grid(Y_DIR.T)
+    res = verify_against_upa(wrong, upa.T, 1.0, exclude_boundary=False)
+    assert not res["passed"], res
+
+
+def test_boundary_contaminated_cells_are_excluded_by_default():
+    """MERIT's upa is global, so at a tile edge it counts area outside the
+    tile. Comparing those cells would report a disagreement caused by the
+    crop -- which looks exactly like a wrong D8 convention."""
+    from nowcast_flood.flow import boundary_contaminated
+    fg, _ = y_grid()
+    flag = boundary_contaminated(fg)
+    assert flag.all()                      # every cell of a 6x3 touches an edge
+    # An interior catchment that touches no edge: the border is all terminal,
+    # and a 5x5 interior block drains east then south to (5, 5).
+    d = np.zeros((7, 7), dtype=int)
+    d[1:6, 1:5] = 1                        # east
+    d[1:5, 5] = 4                          # south
+    fg2 = build_flow_grid(d)
+    f2 = boundary_contaminated(fg2)
+    assert f2[0, 0] and f2[:, 0].all() and f2[-1, :].all()   # the border itself
+    assert not f2[1, 1], "an interior headwater is not contaminated"
+    assert not f2[5, 5], "an interior outlet fed only by interior cells is clean"
+    assert flow_accumulate(fg2)[5, 5] == 25
 
 
 # ---------------------------------------------------------------------------
@@ -212,28 +234,33 @@ def test_kirpich_metric_constant_matches_the_imperial_original():
     """0.0078 L_ft^0.77 S^-0.385 == 0.0195 L_m^0.77 S^-0.385."""
     L_m, S = 12000.0, 0.015
     imperial = 0.0078 * (L_m / 0.3048) ** 0.77 * S ** -0.385
-    metric = float(time_of_concentration([L_m], [S]).t_c_min[0])
+    metric = float(time_of_concentration([L_m], [S], method="kirpich").t_c_min[0])
     assert np.isclose(imperial, metric, rtol=1e-12), (imperial, metric)
 
 
 def test_zero_slope_is_nan_not_a_huge_number():
     """A very large t_c sorts to the end of a warning list and reads as a
     calm basin."""
-    assert np.isnan(time_of_concentration([1000.0], [0.0]).t_c_min[0])
+    for m in ("kirpich", "watt_chow"):
+        assert np.isnan(time_of_concentration([1000.0], [0.0], method=m).t_c_min[0])
 
 
 def test_out_of_range_basins_are_flagged():
     """Kirpich was fitted on 0.004-0.45 km^2. Our basins start at ~25 km^2."""
-    t = time_of_concentration([12000.0], [0.015], [50.0])
+    t = time_of_concentration([12000.0], [0.015], [50.0], method="kirpich")
     assert not t.within_fitted_range[0]
-    assert "outside Kirpich" in t.report()
-    t_ok = time_of_concentration([300.0], [0.05], [KIRPICH_MAX_KM2 / 2])
+    assert "outside kirpich" in t.report()
+    t_ok = time_of_concentration([300.0], [0.05], [KIRPICH_MAX_KM2 / 2],
+                                 method="kirpich")
     assert t_ok.within_fitted_range[0]
+    # ...and the default method IS in range at the same 50 km^2, which is
+    # the entire reason it is the default.
+    assert time_of_concentration([12000.0], [0.015], [50.0]).within_fitted_range[0]
 
 
 def test_steeper_and_shorter_basins_respond_sooner():
     tc = time_of_concentration([12000.0, 12000.0, 3000.0],
-                               [0.005, 0.05, 0.005]).t_c_min
+                               [0.005, 0.05, 0.005], method="kirpich").t_c_min
     assert tc[1] < tc[0] and tc[2] < tc[0]
 
 
@@ -242,7 +269,8 @@ def test_time_to_peak_is_not_time_of_concentration():
     label 'time to peak' -- 136 min where the truth was 111."""
     tc = np.array([135.9])
     assert np.isclose(time_to_peak(tc, 60.0)[0], 30.0 + 0.6 * 135.9)
-    t = time_of_concentration([12000.0], [0.015], rain_duration_min=60.0)
+    t = time_of_concentration([12000.0], [0.015], rain_duration_min=60.0,
+                              method="kirpich")
     assert not np.isclose(t.t_c_min[0], t.t_peak_min[0])
 
 
@@ -338,3 +366,119 @@ def test_rain_grid_must_match_the_terrain():
                                 channel_km2=3.0)
     with pytest.raises(ValueError, match="does not match"):
         r.route(np.zeros((5, 5)))
+
+
+# ---------------------------------------------------------------------------
+# Antecedent moisture (AMC as an input, not an assumption)
+# ---------------------------------------------------------------------------
+
+def test_antecedent_window_excludes_the_day_itself():
+    """Including the current day leaks the event into its own antecedent
+    condition: a storm raises its own CN and inflates its own runoff. It
+    would improve every hindcast and be unavailable at forecast time."""
+    from nowcast_flood import antecedent_5day
+    daily = np.arange(10, dtype=float)[:, None]
+    a = antecedent_5day(daily)[:, 0]
+    assert np.all(np.isnan(a[:5]))          # not enough history
+    assert a[5] == 0 + 1 + 2 + 3 + 4
+    assert a[6] == 1 + 2 + 3 + 4 + 5
+
+
+def test_antecedent_needs_enough_history():
+    from nowcast_flood import antecedent_5day
+    with pytest.raises(ValueError, match="at least 6 days"):
+        antecedent_5day(np.zeros((3, 2)))
+
+
+def test_amc_classes_match_the_nrcs_thresholds():
+    from nowcast_flood import AMC_THRESHOLDS, amc_class
+    lo, hi = AMC_THRESHOLDS["growing"]
+    assert amc_class(np.array([lo - 0.1]))[0] == 1
+    assert amc_class(np.array([lo + 0.1]))[0] == 2
+    assert amc_class(np.array([hi + 0.1]))[0] == 3
+    assert amc_class(np.array([5.0]), "dormant")[0] == 1   # dry in dormant too
+    assert amc_class(np.array([20.0]), "dormant")[0] == 2  # but average in dormant
+
+
+def test_continuous_amc_removes_the_threshold_cliff():
+    """0.2 mm of rain five days ago must not move published risk by 20 CN."""
+    from nowcast_flood import curve_number_from_antecedent as cn_ant
+    cn2 = np.array([70.0])
+    step = [float(cn_ant(cn2, np.array([p]), continuous=False)[0])
+            for p in (35.5, 35.7)]
+    cont = [float(cn_ant(cn2, np.array([p]))[0]) for p in (35.5, 35.7)]
+    assert step[1] - step[0] > 20            # the cliff is real
+    assert cont[1] - cont[0] < 1             # and the interpolation removes it
+
+
+def test_continuous_amc_reproduces_the_classes_at_the_anchors():
+    from nowcast_flood import AMC_THRESHOLDS, adjust_amc
+    from nowcast_flood import curve_number_from_antecedent as cn_ant
+    cn2 = np.array([70.0])
+    lo, hi = AMC_THRESHOLDS["growing"]
+    assert np.isclose(cn_ant(cn2, np.array([lo]))[0], adjust_amc(cn2, "I")[0])
+    assert np.isclose(cn_ant(cn2, np.array([hi]))[0], adjust_amc(cn2, "III")[0])
+    assert np.isclose(cn_ant(cn2, np.array([(lo + hi) / 2]))[0], 70.0)
+
+
+def test_antecedent_cn_is_monotonic():
+    from nowcast_flood import curve_number_from_antecedent as cn_ant
+    p = np.linspace(0, 120, 200)
+    cn = cn_ant(np.full(200, 70.0), p)
+    assert np.all(np.diff(cn) >= -1e-9)
+
+
+# ---------------------------------------------------------------------------
+# Time-of-concentration method choice
+# ---------------------------------------------------------------------------
+
+def test_default_method_is_fitted_at_our_basin_sizes():
+    """Kirpich's range stops at 0.45 km^2; our basins start around 25."""
+    from nowcast_flood.timing import DEFAULT_METHOD, FITTED_RANGE_KM2
+    lo, hi = FITTED_RANGE_KM2[DEFAULT_METHOD]
+    assert lo <= 25.0 <= hi and hi >= 1000.0
+    assert FITTED_RANGE_KM2["kirpich"][1] < 1.0
+
+
+def test_watt_chow_matches_its_published_form():
+    """t_c [h] = 0.000326 (L / sqrt(S))^0.79, L in m."""
+    L, S = 12000.0, 0.015
+    expect = 60.0 * 0.000326 * (L / np.sqrt(S)) ** 0.79
+    got = float(time_of_concentration([L], [S], method="watt_chow").t_c_min[0])
+    assert np.isclose(expect, got, rtol=1e-12)
+
+
+def test_giandotti_needs_relief_and_says_so_by_returning_nan():
+    t = time_of_concentration([12000.0], [0.015], [50.0], method="giandotti")
+    assert np.isnan(t.t_c_min[0])
+    t2 = time_of_concentration([12000.0], [0.015], [50.0], method="giandotti",
+                               mean_elev_above_outlet_m=[180.0])
+    assert np.isfinite(t2.t_c_min[0])
+
+
+def test_methods_disagree_and_the_spread_is_reported():
+    """Three regressions disagreeing by a factor is information the operator
+    needs; one number to the minute is not."""
+    from nowcast_flood import compare_methods
+    c = compare_methods([12000.0], [0.015], [50.0], [180.0], 60.0)
+    assert c["spread_ratio"][0] > 1.3
+    assert c["t_peak_min_low"][0] < c["t_peak_min_high"][0]
+    assert set(c["methods"]) == {"kirpich", "watt_chow", "giandotti"}
+
+
+def test_unknown_method_is_rejected():
+    with pytest.raises(ValueError, match="method must be"):
+        time_of_concentration([1000.0], [0.01], method="vibes")
+
+
+def test_router_records_the_method_and_the_arrival_band():
+    _, upa = y_grid()
+    r = FloodRouter.from_layers(direction=Y_DIR, upa_km2=upa,
+                                curve_number=np.full((6, 3), 75.0),
+                                elevation_m=np.linspace(300, 0, 18).reshape(6, 3),
+                                cell_area_km2=16.0, cell_size_m=4000.0,
+                                channel_km2=3.0)
+    fc = r.route(np.full((6, 3), 90.0), rain_duration_min=60)
+    assert fc.meta["tc_method"] == "watt_chow"
+    assert np.all(fc.arrival_low_min <= fc.time_to_arrival_min + 1e-9)
+    assert np.all(fc.arrival_high_min >= fc.time_to_arrival_min - 1e-9)

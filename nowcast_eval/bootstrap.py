@@ -56,7 +56,8 @@ class PerSampleStats:
         return int(self.n.size)
 
 
-def collect_stats(pred, obs, threshold, cfg: EvalConfig, mask=None) -> PerSampleStats:
+def collect_stats(pred, obs, threshold, cfg: EvalConfig, mask=None,
+                  weights=None) -> PerSampleStats:
     """One pass over the data.
 
     pred/obs are (N, ..., H, W). Axis 0 is the resampling unit -- the
@@ -64,6 +65,14 @@ def collect_stats(pred, obs, threshold, cfg: EvalConfig, mask=None) -> PerSample
     including a lead-time axis if present: the 30-min and the 6-h frame of
     one storm are not independent observations, so they must be resampled
     together or the interval comes out too narrow.
+
+    `weights` is the counting measure for basin geometry (see
+    contingency.ContingencyTable). It must be threaded through here, not
+    only into the point estimate: sufficient statistics accumulated as
+    UNWEIGHTED counts produce an interval around a different statistic than
+    the one being reported -- an area-weighted POD with a per-basin-counted
+    CI. The two would be printed side by side and neither would be wrong on
+    its own.
     """
     pred = np.asarray(pred, dtype=np.float64)
     obs = np.asarray(obs, dtype=np.float64)
@@ -75,19 +84,30 @@ def collect_stats(pred, obs, threshold, cfg: EvalConfig, mask=None) -> PerSample
     o = (obs > 0) & valid
     ax = tuple(range(1, pred.ndim))   # collapse everything below the case axis
 
-    se = np.where(valid, (pred - (obs > 0)) ** 2, 0.0).sum(axis=ax)
+    if weights is None:
+        w = np.ones((), dtype=np.float64)
+    else:
+        w = np.broadcast_to(np.asarray(weights, dtype=np.float64), pred.shape)
+        if np.any(w < 0) or not np.all(np.isfinite(w[valid])):
+            raise ValueError("weights must be finite and non-negative where valid")
+
+    se = np.where(valid, w * (pred - (obs > 0)) ** 2, 0.0).sum(axis=ax)
 
     st = PerSampleStats(
-        n=valid.sum(axis=ax).astype(np.float64),
-        events=o.sum(axis=ax).astype(np.float64),
+        n=(valid * w).sum(axis=ax).astype(np.float64),
+        events=(o * w).sum(axis=ax).astype(np.float64),
         sq_err=se,
-        hits=(f & o).sum(axis=ax).astype(np.float64),
-        false_alarms=(f & ~o & valid).sum(axis=ax).astype(np.float64),
-        misses=(~f & o & valid).sum(axis=ax).astype(np.float64),
+        hits=((f & o) * w).sum(axis=ax).astype(np.float64),
+        false_alarms=((f & ~o & valid) * w).sum(axis=ax).astype(np.float64),
+        misses=((~f & o & valid) * w).sum(axis=ax).astype(np.float64),
     )
 
-    if cfg.is_point:
-        return st        # no spatial neighbourhood over station index
+    # No spatial neighbourhood over an irregular index. This tested
+    # `cfg.is_point`, which let BASIN geometry through and computed FSS over
+    # basin index -- the exact bug the geometry field was introduced to
+    # prevent, reproduced one module over.
+    if not cfg.has_neighborhood:
+        return st
     for size, km in zip(cfg.neighborhood_pixels(), cfg.neighborhood_km):
         pf = neighborhood_fractions(f, valid, size)
         po = neighborhood_fractions(o, valid, size)
@@ -193,6 +213,7 @@ def bootstrap_ci(
     alpha: float = 0.05,
     seed: int = 0,
     groups: np.ndarray | None = None,
+    weights: np.ndarray | None = None,
 ) -> CIResult:
     """Percentile bootstrap CIs over forecast cases.
 
@@ -225,13 +246,13 @@ def bootstrap_ci(
     cfg = config or EvalConfig()
     t = cfg.headline_threshold if threshold is None else threshold
     pred = np.asarray(pred, dtype=np.float64)
-    min_dims = 2 if cfg.is_point else 3
+    min_dims = 3 if cfg.has_neighborhood else 2
     if pred.ndim < min_dims:
         raise ValueError(f"expected at least {min_dims} dims with N the case "
                          f"axis, got {pred.shape}")
 
-    st = collect_stats(pred, obs, t, cfg, mask)
-    kms = [] if cfg.is_point else list(cfg.neighborhood_km)
+    st = collect_stats(pred, obs, t, cfg, mask, weights)
+    kms = list(cfg.neighborhood_km) if cfg.has_neighborhood else []
     N = st.n_samples
     all_idx = np.arange(N)
 
@@ -305,6 +326,7 @@ def attach_confidence_intervals(
     n_boot: int = 1000,
     seed: int = 0,
     groups: np.ndarray | None = None,
+    weights: np.ndarray | None = None,
 ):
     """Add CIs to an EvaluationResult, per lead time and pooled.
 
@@ -318,12 +340,21 @@ def attach_confidence_intervals(
         obs = (obs.astype(np.float64) >= cfg.obs_threshold).astype(np.float64)
     if mask is not None:
         mask = np.broadcast_to(np.asarray(mask, dtype=bool), pred.shape)
+    if cfg.is_basin and cfg.basin_weighting != "equal" and weights is None:
+        raise ValueError(
+            "geometry='basin' needs the same `weights` here as in evaluate(); "
+            "without them the interval would be built from unweighted counts "
+            "around an area-weighted point estimate.")
+    if weights is not None:
+        weights = np.broadcast_to(np.asarray(weights, dtype=np.float64),
+                                  pred.shape)
 
     for li, lead in enumerate(result.per_lead):
         m = mask[:, li] if mask is not None else None
         lead.ci = bootstrap_ci(pred[:, li], obs[:, li], cfg, m,
-                               n_boot=n_boot, seed=seed + li,
-                               groups=groups).to_dict()
+                               n_boot=n_boot, seed=seed + li, groups=groups,
+                               weights=(weights[:, li] if weights is not None
+                                        else None)).to_dict()
 
     # Pooled: pass the full (N, L, H, W) array so the lead-time axis is
     # collapsed INTO each case rather than resampled as if independent.
@@ -331,6 +362,7 @@ def attach_confidence_intervals(
     # one storm as two separate observations and shrink the interval.
     result.pooled["ci"] = bootstrap_ci(
         pred, obs, cfg, mask, n_boot=n_boot, seed=seed + 999, groups=groups,
+        weights=weights,
     ).to_dict()
     return result
 
