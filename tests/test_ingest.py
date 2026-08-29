@@ -509,3 +509,81 @@ def test_pileup_scan_runs_inside_the_imerg_checker(tmp_path):
     s.rate_mmhr[:200] = 12345.0           # an isolated spike
     names = [n for n, ok, _ in imerg.check_physics(s) if n == "value pile-up"]
     assert names, "IMERG checker must run the sentinel scan"
+
+
+# --------------------------------------------------------------------------
+# Cross-satellite consistency
+# --------------------------------------------------------------------------
+
+from nowcast_data.cross_satellite import compare_distributions
+
+
+def _bt(n=1_000_000, seed=0):
+    """~1M pixels. A real INSAT TIR scan is 2816x2805 = 7.9M, and below
+    ~500k the p99.9 comparison is sampling noise (1.31 K at n=100k)."""
+    return np.random.default_rng(seed).normal(275.0, 20.0, n)
+
+
+def test_identical_instruments_read_as_consistent():
+    a, b = _bt(seed=0), _bt(seed=1)
+    r = compare_distributions({"TIR1": a}, {"TIR1": b})
+    assert r.safe_to_mix
+    assert not r.needs_single_satellite
+    assert "train across satellites" in r.report()
+
+
+def test_constant_offset_is_diagnosed_as_correctable():
+    """A calibration offset is fixable by per-satellite normalisation."""
+    a = _bt()
+    r = compare_distributions({"TIR1": a}, {"TIR1": a + 1.2})
+    c = r.comparisons[0]
+    assert c.verdict == "offset"
+    assert c.is_offset_like
+    assert abs(c.median_diff - 1.2) < 0.05
+    assert not r.safe_to_mix and not r.needs_single_satellite
+    assert "normalisation" in r.report()
+
+
+def test_calibration_slope_forces_a_single_satellite():
+    """A slope is NOT correctable by shifting the mean -- the distributions
+    differ in shape, so the model could learn satellite identity."""
+    a = _bt()
+    r = compare_distributions({"TIR1": a}, {"TIR1": 275 + (a - 275) * 1.15})
+    c = r.comparisons[0]
+    assert not c.is_offset_like, "a slope must not be mistaken for an offset"
+    assert c.verdict in ("shape-differs", "large")
+    assert r.needs_single_satellite
+    assert "3RIMG" in r.report(), "should name the satellite to fall back to"
+
+
+def test_grids_of_different_shapes_are_comparable():
+    """3DR and 3DS view from different sub-satellite longitudes, so a
+    pixelwise difference would confound geometry with calibration.
+    Distributions must be comparable regardless of grid shape."""
+    r = compare_distributions({"TIR1": _bt(1_000_000, 0).reshape(2000, 500)},
+                              {"TIR1": _bt(800_000, 1).reshape(1600, 500)})
+    assert r.comparisons and r.comparisons[0].verdict == "consistent"
+
+
+def test_small_samples_are_reported_inconclusive_not_different():
+    """Guard against a spurious verdict: two IDENTICAL instruments sampled at
+    100k pixels differ at p99.9 by ~1.3 K from noise alone, which would
+    otherwise read as 'shape-differs' and wrongly rule out mixing."""
+    r = compare_distributions({"TIR1": _bt(100_000, 0)}, {"TIR1": _bt(100_000, 1)})
+    c = r.comparisons[0]
+    assert c.underpowered
+    assert c.verdict == "underpowered"
+    assert not r.needs_single_satellite, "noise must not masquerade as a slope"
+    assert "INCONCLUSIVE" in r.report()
+
+
+def test_channels_present_in_only_one_scene_are_skipped():
+    r = compare_distributions({"TIR1": _bt(), "WV": _bt(seed=2)},
+                              {"TIR1": _bt(seed=1)})
+    assert [c.channel for c in r.comparisons] == ["TIR1"]
+
+
+def test_too_few_pixels_is_not_compared():
+    r = compare_distributions({"TIR1": np.array([275.0, 276.0])},
+                              {"TIR1": np.array([275.0, 276.0])})
+    assert r.comparisons == []

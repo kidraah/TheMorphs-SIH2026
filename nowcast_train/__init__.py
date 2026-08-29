@@ -7,7 +7,8 @@ from .calibration import (IsotonicCalibrator, apply_calibrators, fit_calibrators
                           select_threshold_far_constrained, select_thresholds)
 from .dataset import (CachedSEVIRDataset, ChannelStats, DatasetConfig, NaNPolicy,
                       SEVIRDataset, TargetConfig, collate, compute_channel_stats)
-from .loop import TrainConfig, head_eval_configs, run_validation, train
+from .loop import (TrainConfig, format_operating_points, head_eval_configs,
+                   run_validation, train)
 from .splits import Split, SplitReport, count_episodes, episode_ids, split_by_time, split_sevir
 
 __all__ = [
@@ -22,4 +23,5 @@ __all__ = [
     "ChannelStats", "compute_channel_stats", "collate",
     "save_checkpoint", "load_checkpoint", "find_latest",
     "train", "TrainConfig", "run_validation", "head_eval_configs",
+    "format_operating_points",
 ]

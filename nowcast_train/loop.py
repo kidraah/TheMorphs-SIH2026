@@ -24,6 +24,7 @@ from torch.utils.data import DataLoader
 from nowcast_eval import EvalConfig, attach_confidence_intervals, evaluate_multi
 from nowcast_model import MultiTaskLoss, MultiTaskNowcaster
 
+from .calibration import operating_points
 from .checkpoint import find_latest, load_checkpoint, save_checkpoint
 from .dataset import collate
 
@@ -54,6 +55,13 @@ class TrainConfig:
     # val set. During training only the headline threshold is needed, which
     # is ~10x cheaper; the full sweep belongs in the final report.
     lean_validation: bool = True
+    # False-alarm-ratio ceiling for the deployable operating point. Selecting
+    # on SEDI alone gave FAR 0.997 on the rare heads -- 997 false alarms per
+    # 1000 warnings. SEDI's false-alarm term is the RATE b/(b+d), which stays
+    # tiny when negatives dominate, so an unconstrained optimum buys recall at
+    # almost any price. Both points are reported every epoch; neither is
+    # quotable without the other.
+    far_ceiling: float = 0.80
 
     def __post_init__(self):
         self.run_dir = Path(self.run_dir)
@@ -61,6 +69,35 @@ class TrainConfig:
             self.device = ("cuda" if torch.cuda.is_available()
                            else "mps" if torch.backends.mps.is_available()
                            else "cpu")
+
+
+def format_operating_points(ops: dict, metric: str = "sedi") -> str:
+    """Both operating points side by side. Neither is quotable alone.
+
+    The unconstrained point is the model's discrimination ceiling. The
+    FAR-constrained point is what an operator could actually act on. Showing
+    only the first is how a warning system with 997 false alarms per 1000
+    ends up on a slide looking excellent.
+    """
+    lines = ["", "operating points (selected on validation)",
+             f"{'head':>14} {'  UNCONSTRAINED':>30} {'  FAR-CONSTRAINED':>32}"]
+    lines.append(f"{'':>14} {'thr':>8} {metric:>7} {'POD':>6} {'FAR':>6}"
+                 f"{'thr':>10} {metric:>7} {'POD':>6} {'FAR':>6} {'ok?':>5}")
+    lines.append("-" * 78)
+    for head, d in ops.items():
+        u, c = d["unconstrained"], d["far_constrained"]
+        lines.append(
+            f"{head:>14} {u['threshold']:>8.4f} {u[metric]:>7.3f} "
+            f"{u['pod']:>6.3f} {u['far']:>6.3f}"
+            f"{c['threshold']:>10.4f} {c[metric]:>7.3f} {c['pod']:>6.3f} "
+            f"{c['far']:>6.3f} {('yes' if c['feasible'] else 'NO'):>5}")
+    infeasible = [h for h, d in ops.items() if not d["far_constrained"]["feasible"]]
+    if infeasible:
+        lines.append(f"!!  no operating point meets FAR <= "
+                     f"{list(ops.values())[0]['max_far']:.2f} for: "
+                     f"{', '.join(infeasible)}. The least-bad point is shown; "
+                     f"this head is not deployable at that ceiling yet.")
+    return "\n".join(lines)
 
 
 def head_eval_configs(model: MultiTaskNowcaster, grid_km: float = 4.0,
@@ -106,7 +143,9 @@ def run_validation(model, loader, cfgs, lead_minutes, groups=None, n_boot=500,
         attach_confidence_intervals(result[name], preds[name], targs[name],
                                     cfgs[name], n_boot=n_boot,
                                     groups=groups if groups is not None else None)
-    return result, order
+    # Raw arrays come back too, so the operating points can be computed
+    # without a second inference pass.
+    return result, order, preds, targs
 
 
 def train(model: MultiTaskNowcaster, train_ds, val_ds, config: TrainConfig,
@@ -180,10 +219,12 @@ def train(model: MultiTaskNowcaster, train_ds, val_ds, config: TrainConfig,
         train_s = time.time() - t0        # training only, before validation
         train_loss = running / max(len(train_dl), 1)
 
-        result, _ = run_validation(model, val_dl, cfgs, lead_minutes,
-                                   groups=val_groups, n_boot=cfg.n_boot,
-                                   device=dev)
+        result, _, vprobs, vtargs = run_validation(
+            model, val_dl, cfgs, lead_minutes, groups=val_groups,
+            n_boot=cfg.n_boot, device=dev)
         name, score = result.worst_head_lower_bound(cfg.checkpoint_metric)
+        ops = operating_points(vprobs, vtargs, metric=cfg.checkpoint_metric,
+                               max_far=cfg.far_ceiling)
 
         epoch_s = time.time() - t0
         print(f"\nepoch {epoch}  train_loss {train_loss:.4f}  "
@@ -198,12 +239,14 @@ def train(model: MultiTaskNowcaster, train_ds, val_ds, config: TrainConfig,
                     **{f"{h}/csi": result[h].pooled["headline"]["csi"]
                        for h in result.names}})
         print(result.summary_table().split("--- ")[0])
+        print(format_operating_points(ops, cfg.checkpoint_metric))
         if previous is not None:
             print(result.compare(previous, metric=cfg.checkpoint_metric))
 
         # Always save `last` so a reclaim loses at most one epoch.
         stamp = {"train_loss": train_loss, "notes": cfg.notes,
-                 "head_provenance": cfg.head_provenance}
+                 "head_provenance": cfg.head_provenance,
+                 "operating_points": ops}
         save_checkpoint(cfg.run_dir / "last.pt", model=model, optimizer=opt,
                         scheduler=sched, epoch=epoch, best_score=best,
                         config=cfg, extra=stamp)

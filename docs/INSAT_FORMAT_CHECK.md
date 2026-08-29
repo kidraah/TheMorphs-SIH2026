@@ -5,7 +5,27 @@ If MOSDAC's product has drifted, the reader **fails silently** — plausible
 arrays with wrong values — rather than raising. So a PASS must always be
 attributed to a specific product version.
 
-## Baseline: 2019 V01R00 — PASSES
+## What is proven, and what is not
+
+| satellite | product | reader proven? | status |
+|---|---|---|---|
+| INSAT-3D | `3DIMG_L1B_STD` | **yes** — 2019 V01R00, below | **In-Active since 2024-06-18** |
+| INSAT-3DR | `3RIMG_L1B_STD` | **NO** | Active — *the workhorse for every event from 2016* |
+| INSAT-3DS | `3SIMG_L1B_STD` | **NO** | Active — current operational |
+
+**The only satellite satpy is proven on is the decommissioned one.** The
+2019 file is `3DIMG` — INSAT-3D, which stopped delivering on 2024-06-18.
+Nothing downstream may assume the reader works on 3DR or 3DS.
+
+That matters most for 3DR: it carries every hindcast event from 2016 onward
+and all 24 monsoon archive configs. If the reader fails on `3RIMG`, those 24
+configs are dead until it is fixed, and no plan built on them holds.
+
+Gates: `configs/mosdac/00_verify_3DS_current.json` and
+`configs/mosdac/01_verify_3DR_current.json`. Both must pass before any bulk
+pull.
+
+## Baseline: 2019 V01R00 (INSAT-3D) — PASSES
 
 `3DIMG_25AUG2019_2330_L1B_STD_V01R00.h5` (400 MB), satpy 0.60.0, h5netcdf.
 
@@ -45,11 +65,14 @@ below 190 K. Widened to 170–345 K (TIR/MIR) and 170–290 K (WV) against
 observed data. A sanity check calibrated on a textbook rather than on the
 instrument is itself a source of false alarms.
 
-## Open: current product version — NOT yet verified
+## Open: 3DR and 3DS — NOT yet verified
 
-A 2019 pass says nothing about MOSDAC's output today. INSAT-3DS became
-operational Feb 2024 and may carry a different `datasetId`, `Software_Version`
-and possibly geometry.
+A 2019 INSAT-3D pass says nothing about either active satellite. Each is a
+different instrument with its own calibration, and possibly a different
+`Software_Version` or geometry.
+
+Record the identity block from each gate here as it comes in, so the three
+can be diffed against one another.
 
 To close it: fetch `configs/mosdac_test.json`, run
 

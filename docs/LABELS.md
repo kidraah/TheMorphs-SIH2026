@@ -15,6 +15,13 @@ This failure is silent. Nothing in a loss curve or a scorecard reveals it —
 CSI, SEDI and FSS would all look healthy, because the model really is
 predicting the target well. It is the target that is wrong.
 
+**The exact products to refuse**, so a catalog search lands here:
+`3RIMG_L2G_IMR` / `3DIMG_L2G_IMR` / `3SIMG_L2G_IMR` (IMSRA rain, 10 km),
+`3RIMG_L2B_HEM` / `3DIMG_L2B_HEM` / `3SIMG_L2B_HEM` (hydro-estimator, 4 km),
+and their `_L3*` daily/weekly aggregates. They are free to download and
+tempting for exactly that reason — which is why the reason to skip them is
+recorded rather than assumed.
+
 If someone proposes IMSRA later because it is higher-resolution or easier to
 obtain, that is the argument to re-read.
 
