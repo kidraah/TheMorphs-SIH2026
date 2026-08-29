@@ -37,6 +37,19 @@ So: `ensure_pinned_or_reexec()` is the reliable form. It re-executes the
 interpreter with the variables set when they were absent at startup, which
 is the only way to guarantee OpenMP sees them. Entrypoints should call it
 on their first line.
+
+THE SERVICE NO LONGER DEPENDS ON ANY OF THIS
+--------------------------------------------
+Everything above orders around the conflict, and ordering has to be
+preserved by every wrapper downstream -- gunicorn, a container entrypoint, a
+scheduler -- with nothing enforcing it. `nowcast_serve` removes the
+constraint instead: ingest runs in an exec'd child that has never imported
+torch, so the model can be built on the GPU at boot like any normal service.
+See docs/SERVICE_ARCHITECTURE.md.
+
+This module remains correct, and remains the right tool, for the
+single-process work that legitimately does both jobs: training,
+scripts/build_cache.py, notebooks, the test suite.
 """
 from __future__ import annotations
 

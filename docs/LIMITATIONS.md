@@ -56,12 +56,35 @@ the atmospheric heads. A forecast can be right about which valley floods and
 score badly for misplacing pixels within it. Needs basin-polygon aggregation
 from the DEM.
 
-## 4. End-to-end latency is unmeasured (open)
+## 4. End-to-end latency: measured on MPS, unmeasured at the real config
 
-The differentiation claim against NWP is latency, and it is not yet
-benchmarked. When it is, it must cover the full chain — decode → regrid →
-inference → publish — not `model.forward()` in isolation, which is the
-term least likely to dominate.
+The differentiation claim against NWP is latency. The full chain — decode →
+regrid → assemble → forward → postprocess — is now measured by
+`scripts/probe_latency.py`, through the deployed service shape rather than
+an in-process path the service cannot legally use.
+
+Measured (dim 128, MPS, full India grid): **6.70 s end-to-end**, of which
+decode+regrid was **40%**. So `model.forward()` in isolation was never the
+answer, which is why the probe exists.
+
+**What is still open:** the number at the real config. The two terms scale
+differently —
+
+| term | scales with |
+|---|---|
+| decode + regrid | nothing (fixed work per scan) |
+| forward | dim, depth, token count |
+
+— so the 40/60 split at dim 128 does **not** carry over to dim 384 / depth
+10. The probe prints the split and names which side dominates; it must be
+re-run on the rented CUDA box before any latency figure is quoted. At dim
+128 / grid 192 ingest was 98% of the chain, which shows how far the ratio
+moves with config alone.
+
+**Resolved along the way:** the OpenMP conflict that made the service abort
+is gone rather than ordered around — ingest runs in an exec'd child that has
+never imported torch, so the model may be built on the GPU at boot like any
+normal service. See [SERVICE_ARCHITECTURE.md](SERVICE_ARCHITECTURE.md).
 
 ## 4b. "INSAT WV is 8 km" is SATELLITE-SPECIFIC — and it is load-bearing
 
@@ -193,7 +216,7 @@ The right people to set this are IMD / NDMA, not us. Until they do, report
 both operating points and let the reader see the trade rather than
 presenting either as *the* answer.
 
-## 7. OPEN: no cross-attention between the satellite and thermodynamic streams
+## 7. CLOSED: cross-attention between the satellite and thermodynamic streams
 
 The problem statement specifies cross-attention:
 
@@ -201,7 +224,22 @@ The problem statement specifies cross-attention:
 > analyzes real-time satellite grids ... against the IMDAA-derived
 > thermodynamic baselines using **cross-attention mechanisms**."*
 
-**The current model does not do this.** Every input enters through one
+**Closed.** `CrossAttention` in `nowcast_model/backbone.py` takes queries
+from the satellite stream and keys/values from a context stream held at its
+own resolution; `DividedSpaceTimeBlock(..., cross=True)` interleaves it, and
+weights come back shaped `(layers, B, satellite_tokens, context_tokens)`
+with each row summing to 1 — a per-location statement of which thermodynamic
+cell was consulted, and the model's actual computation rather than a
+post-hoc attribution. `ModelConfig(context_channels=0)` keeps the old
+behaviour, and supplying context to a model built without it raises.
+
+**Still to wire:** the training dataset does not yet populate `context=`, so
+the path is built but not exercised end-to-end in training. The service and
+latency probe do supply it (`IngestWorker.era5`).
+
+The original gap, kept for the reasoning:
+
+**The pre-fusion model did not do this.** Every input entered through one
 `nn.Conv3d(in_channels, dim, ...)` stem: satellite bands, reanalysis fields
 and static channels are concatenated along the channel axis and mixed by a
 single convolution. That is early fusion, not cross-attention.

@@ -1,4 +1,14 @@
-"""The inference service does pyresample THEN torch in one process.
+"""Single-process OpenMP pinning: training, cache builds, notebooks.
+
+SCOPE NOTE. These tests cover `nowcast_data._threads`, which ORDERS around
+the OpenMP conflict. The inference service no longer works that way -- it
+runs ingest in an exec'd child that has never imported torch, and is covered
+by tests/test_service_shape.py. What remains here is the single-process case
+that legitimately does both jobs.
+
+The original framing, still true for those callers:
+
+The inference service does pyresample THEN torch in one process.
 
 pykdtree (under pyresample) and torch each ship an OpenMP runtime, and two in
 one process abort the interpreter. Pinning it in conftest.py fixes the test
