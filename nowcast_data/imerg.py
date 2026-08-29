@@ -29,6 +29,7 @@ from pathlib import Path
 import numpy as np
 
 from .grids import india_area
+from .sentinels import detect_pileups
 
 FILL_VALUE = -9999.9
 IMERG_RESOLUTION_DEG = 0.1
@@ -109,6 +110,14 @@ def check_physics(scan: ImergScan, min_valid_frac: float = 0.5) -> list:
         out.append(("no negative rain", lo >= 0.0, f"min {lo:.3f} mm/hr"))
     out.append(("orientation", a.shape == IMERG_SHAPE_LONLAT[::-1],
                 f"shape {a.shape} (lat, lon)"))
+
+    # Standing sentinel audit -- see nowcast_data/sentinels.py. IMERG's -9999.9
+    # is already handled, but assume there is another one we have not met.
+    pu = detect_pileups(a, min_fraction=0.001)
+    bad = [p for p in pu.pileups if p.suspicion == "high"]
+    out.append(("value pile-up", not bad,
+                ("; ".join(f"{p.value:g} at {100 * p.fraction:.2f}%" for p in bad)
+                 + "  <-- check the product docs") if bad else "no isolated spikes"))
     return out
 
 

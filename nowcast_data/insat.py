@@ -24,6 +24,7 @@ from typing import Sequence
 import numpy as np
 
 from .grids import india_area
+from .sentinels import detect_pileups
 
 # Native resolutions, straight from the satpy reader spec.
 INSAT_RESOLUTION_M = {"VIS": 1000, "SWIR": 1000, "MIR": 4000,
@@ -217,6 +218,18 @@ def check_physics(arrays: dict, min_valid_frac: float = 0.05,
                         f"{val:.2f} K"
                         + ("" if frac <= MAX_SATURATED_FRAC
                            else "  <-- LUT clamp or unmasked fill value"))
+
+        # Standing sentinel audit. Three fill/clamp values on this project
+        # have decoded to plausible physical extremes without raising
+        # (VIL byte-255, the int16 sentinel, the count->K LUT clamp), so this
+        # runs on every channel of every source rather than being remembered.
+        pu = detect_pileups(a, min_fraction=0.001)
+        bad = [p for p in pu.pileups if p.suspicion == "high"]
+        chk.add(f"{name} value pile-up", not bad,
+                (f"{len(bad)} suspicious value(s): "
+                 + "; ".join(f"{p.value:g} at {100 * p.fraction:.2f}%" for p in bad)
+                 + "  <-- check the product docs; a fill decoded as a physical "
+                   "extreme does not raise") if bad else "no isolated spikes")
 
     # The window/absorption contrast, on percentiles for the same reason.
     if "TIR1" in arrays and "WV" in arrays:

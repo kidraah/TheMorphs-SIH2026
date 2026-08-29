@@ -1,19 +1,30 @@
 {
-  "_comment": "FORMAT-CHECK request. One recent daytime scan, full disk, to answer whether satpy's reader handles MOSDAC's CURRENT product version. Credentials are read from the gitignored .env -- leave them empty here.",
-  "_purpose": "Closes the current-format question. Nothing bulk should be downloaded before this passes.",
-  "username": "",
-  "password": "",
-  "datasetId": "3DIMG_L1B_STD",
-  "_datasetId_uncertain": "3DIMG_L1B_STD is CONFIRMED working for 2019. It returns a parameter error for 2026 dates. Try in this order and record which works: 3SIMG_L1B_STD (INSAT-3DS, operational Feb 2024 -- the MOSDAC manual's own example), 3DRIMG_L1B_STD (INSAT-3DR), then 3DIMG_L1B_STD.",
-  "fromDate": "01AUG2026",
-  "toDate": "01AUG2026",
-  "_time_window": "0800-0900 UTC = 1330-1430 IST. Monsoon afternoon: convection active AND sun high, so VIS/SWIR carry signal and the reflective checks actually run rather than being skipped as N/A.",
-  "startTime": "0800",
-  "endTime": "0900",
-  "boundingBox": "",
-  "_boundingBox_empty_because": "Full disk. The format check must exercise the same product geometry the reader was written against; a spatial subset could mask a geometry change.",
-  "count": 1,
-  "organize_by_date": false,
-  "_expected_size": "~400 MB for one full-disk L1B scan.",
-  "_after_download": "cd /Users/evad/nowcast && .venv/bin/python -c \"from nowcast_data.insat import ingest_scan; a,c = ingest_scan('PATH.h5', strict=False); print(c.report())\""
+  "_comment": "FORMAT-CHECK request: one recent daytime scan to answer whether satpy's reader handles MOSDAC's CURRENT product. Credentials read from the gitignored .env -- leave empty here.",
+  "_corrected": "Parameter names, date format, bbox order and count ceiling all follow https://mosdac.gov.in/downloadapi-manual. An earlier version of this file used fromDate/toDate with DDMMMYYYY dates and a lat-first bbox -- all four were wrong and are a likely cause of a parameter error.",
+  "_verify_nesting": "The manual documents the parameters but we could not retrieve a verbatim example config. Check the sample config shipped inside https://mosdac.gov.in/software/mdapi.zip and adjust the section names if they differ.",
+
+  "user_credentials": {
+    "username": "",
+    "password": ""
+  },
+
+  "search_parameters": {
+    "datasetId": "3SIMG_L1B_STD",
+    "_datasetId": "3SIMG_L1B_STD is the manual's own example and is INSAT-3DS (operational Feb 2024) -- most likely for recent dates. Alternatives if it errors: 3DRIMG_L1B_STD (INSAT-3DR), 3DIMG_L1B_STD (INSAT-3D, confirmed working for 2019, may now be archive-only). Catalog browser: https://mosdac.gov.in/catalog/satellite.php",
+
+    "startTime": "2026-08-01",
+    "endTime": "2026-08-01",
+    "_date_format": "YYYY-MM-DD per the manual (example: 2024-09-25). NOT DDMMMYYYY -- that is the FILENAME convention, not the API's.",
+
+    "count": 1,
+    "_count": "Manual states a ceiling of 100 records per request. There is no 'unlimited'.",
+
+    "boundingBox": "",
+    "_boundingBox_empty_because": "Full disk deliberately: the format check must exercise the same product geometry the reader was written against, and a spatial subset could mask a geometry change.",
+    "_boundingBox_format": "minLon,minLat,maxLon,maxLat -- LONGITUDE FIRST (manual example: 70.0,8.0,90.0,28.0)."
+  },
+
+  "_target_window": "A monsoon afternoon so VIS/SWIR are lit and the reflective checks actually run rather than being reported N/A. If the API supports a time-of-day filter, target 0800-0900 UTC = 1330-1430 IST; otherwise take any granule from that window in the returned listing.",
+  "_expected_size": "~400 MB for one full-disk L1B scan (measured on the 2019 file).",
+  "_after_download": "cd /Users/evad/nowcast && .venv/bin/python -c \"from nowcast_data.insat import ingest_scan; a,c = ingest_scan('PATH.h5', strict=False); print(c.report())\"  then diff the printed identity block against docs/INSAT_FORMAT_CHECK.md"
 }

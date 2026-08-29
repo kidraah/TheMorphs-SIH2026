@@ -62,3 +62,28 @@ The differentiation claim against NWP is latency, and it is not yet
 benchmarked. When it is, it must cover the full chain — decode → regrid →
 inference → publish — not `model.forward()` in isolation, which is the
 term least likely to dominate.
+
+## 5. Sentinel values decoded as physical extremes — three found, assume more
+
+Three times on this project a fill or clamp value has decoded to a
+plausible-looking physical **extreme** rather than raising:
+
+| source | value | decoded as | share |
+|---|---|---|---|
+| SEVIR VIL | byte 255 | 81.33 kg/m² — top of the entire range | 27% of a missing event |
+| SEVIR / INSAT IR | int16 min | −327.68 °C — coldest possible cloud top | 7% |
+| INSAT L1B | count→K LUT clamp | 180.09 K in **two** channels with different physics | 0.33% |
+
+This is the worst possible failure mode for a severe-weather model: an
+extreme is exactly what the model is built to notice, so a sentinel becomes
+the strongest signal in the dataset. None raised. Each was found by hand,
+after the data was already in use.
+
+`nowcast_data/sentinels.py` now makes the check mechanical, and it runs
+inside both the INSAT and IMERG checkers. It flags any single value holding
+an anomalous share, scored on **isolation** (gap to the rest of the
+distribution, in robust scale units) rather than mass alone — because a rain
+field legitimately piles 85% of its pixels at exactly 0.0.
+
+**Standing rule: run it on every new data source before trusting that
+source.** Assume IMERG and INSAT L1B each hide one we have not met yet.

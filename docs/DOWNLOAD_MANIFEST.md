@@ -7,8 +7,23 @@ rather than iterated on.
 **Sizes are estimates** except where marked measured. **Disk: ~271 GB free** —
 which is the binding constraint on items P5 and P6, see the note there.
 
-Date format `DDMMMYYYY` (e.g. `25AUG2019`) is the form seen in the working
-2019 request and in the delivered filename. Times are UTC; IST = UTC + 5:30.
+**CORRECTION — the API parameters are not what this manifest first said.**
+Per the [MOSDAC API manual](https://mosdac.gov.in/downloadapi-manual):
+
+| | correct | this manifest originally said |
+|---|---|---|
+| date format | `YYYY-MM-DD` (e.g. `2024-09-25`) | `DDMMMYYYY` — that is the FILENAME convention, not the API's |
+| parameters | `startTime` / `endTime` | `fromDate` / `toDate` |
+| bounding box | `minLon,minLat,maxLon,maxLat` — **longitude first** | lat first — would have returned the wrong region |
+| count | ceiling of **100** per request | "empty for unlimited" |
+
+Any of the first three is a plausible cause of the 2026 parameter error.
+The `datasetId` is the other candidate: `3SIMG_L1B_STD` (INSAT-3DS,
+operational Feb 2024) is the manual's own worked example, so it is the
+strongest guess for recent dates. Catalog browser:
+https://mosdac.gov.in/catalog/satellite.php
+
+Times are UTC; IST = UTC + 5:30.
 
 ---
 
@@ -46,6 +61,7 @@ Subset/Get Data → date 2019-08-25, or the archive path
 | config | `configs/mosdac_test.json` |
 | datasetId | **uncertain** — see below |
 | window | a recent monsoon afternoon, 0800–0900 UTC (1330–1430 IST) |
+| dates | `startTime`/`endTime` as `YYYY-MM-DD` |
 | bbox | empty (full disk, deliberately) |
 | count | 1 |
 | unblocks | every subsequent INSAT download |
@@ -55,7 +71,8 @@ Subset/Get Data → date 2019-08-25, or the archive path
 which works:
 
 1. `3SIMG_L1B_STD` — INSAT-3DS, operational since Feb 2024, and the MOSDAC
-   manual's own example. Most likely for recent dates.
+   manual's own worked example. Most likely for recent dates, and now the
+   default in `configs/mosdac_test.json`.
 2. `3DRIMG_L1B_STD` — INSAT-3DR.
 3. `3DIMG_L1B_STD` — INSAT-3D; may now be archive-only.
 

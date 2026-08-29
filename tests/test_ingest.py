@@ -439,3 +439,73 @@ def test_real_2019_scan_passes_end_to_end():
     assert native["TIR1"].shape == (2816, 2805)
     assert native["WV"].shape == (1408, 1402)
     assert native["TIR1"].shape[0] == 2 * native["WV"].shape[0]
+
+
+# --------------------------------------------------------------------------
+# Standing sentinel audit
+# --------------------------------------------------------------------------
+
+from nowcast_data.sentinels import detect_pileups
+
+
+def test_catches_all_three_bugs_already_found_by_hand():
+    """Regression on this project's most repeated failure. All three decoded
+    to plausible physical EXTREMES and none of them raised."""
+    rng = np.random.default_rng(0)
+
+    # 1. SEVIR VIL byte 255 -> 81.33 kg/m^2, top of the range
+    raw = rng.integers(0, 60, 100_000).astype(np.uint8); raw[:27_000] = 255
+    vil = np.where(raw > 18, np.exp((raw.astype(float) - 83.9) / 38.9),
+                   np.where(raw > 5, (raw.astype(float) - 2) / 90.66, 0.0))
+    assert detect_pileups(vil).has_suspicious
+
+    # 2. int16 missing sentinel -> -327.68 degC, coldest possible cloud top
+    tir = rng.normal(280, 15, 100_000); tir[:7_000] = -327.68
+    assert detect_pileups(tir).has_suspicious
+
+    # 3. INSAT count->K LUT clamp at only 0.33% of pixels
+    k = rng.normal(281, 11, 300_000); k[:1000] = 180.09
+    assert detect_pileups(k).has_suspicious
+
+
+def test_legitimate_dry_pixel_zero_mode_is_not_flagged():
+    """The control that must not fire: an IMERG rain field is mostly zeros,
+    and zero is both the natural boundary AND the modal value. An earlier
+    version flagged it HIGH because the IQR of a mostly-zero field is
+    degenerate, inflating the isolation score to 2e8."""
+    rng = np.random.default_rng(0)
+    rain = np.where(rng.random(200_000) < 0.85, 0.0, rng.exponential(3, 200_000))
+    r = detect_pileups(rain)
+    assert not r.has_suspicious, r.report("rain")
+    assert r.pileups and r.pileups[0].value == 0.0
+    assert "natural boundary" in r.pileups[0].note
+
+
+def test_clean_field_is_clean():
+    rng = np.random.default_rng(1)
+    assert not detect_pileups(rng.normal(280, 15, 100_000)).has_suspicious
+
+
+def test_isolation_not_mass_is_the_signal():
+    """A huge but continuous mode is fine; a small isolated spike is not."""
+    rng = np.random.default_rng(2)
+    continuous = np.concatenate([np.full(90_000, 0.0), rng.exponential(2, 10_000)])
+    spike = rng.normal(280, 15, 100_000).copy(); spike[:500] = -9999.9
+    assert not detect_pileups(continuous).has_suspicious
+    assert detect_pileups(spike).has_suspicious, "0.5% isolated spike must flag"
+
+
+def test_pileup_scan_runs_inside_the_insat_checker():
+    a = _realistic_tir((200, 200))
+    a[:20] = -9999.9                      # unmasked fill
+    chk = insat.check_physics({"TIR1": a}, metadata={})
+    row = [r for r in chk.results if "pile-up" in r.name]
+    assert row and not row[0].passed
+    assert "check the product docs" in row[0].detail
+
+
+def test_pileup_scan_runs_inside_the_imerg_checker(tmp_path):
+    s = imerg.read_precipitation(_write_imerg(tmp_path))
+    s.rate_mmhr[:200] = 12345.0           # an isolated spike
+    names = [n for n, ok, _ in imerg.check_physics(s) if n == "value pile-up"]
+    assert names, "IMERG checker must run the sentinel scan"

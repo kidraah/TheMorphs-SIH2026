@@ -46,6 +46,14 @@ class TrainConfig:
     # the weights do NOT mean -- e.g. that a head was trained on pseudo-labels.
     notes: str = ""
     head_provenance: dict = field(default_factory=dict)
+    amp: bool = True            # mixed precision; ignored off CUDA
+    wandb_project: str = ""     # empty disables W&B entirely
+    wandb_run: str = ""
+    # Validation cost is dominated by the FSS sweep: 10 thresholds x 4
+    # neighbourhoods x 7 blocks = 280 filter passes, ~87 s per head on the
+    # val set. During training only the headline threshold is needed, which
+    # is ~10x cheaper; the full sweep belongs in the final report.
+    lean_validation: bool = True
 
     def __post_init__(self):
         self.run_dir = Path(self.run_dir)
@@ -55,15 +63,24 @@ class TrainConfig:
                            else "cpu")
 
 
-def head_eval_configs(model: MultiTaskNowcaster, grid_km: float = 4.0) -> dict:
+def head_eval_configs(model: MultiTaskNowcaster, grid_km: float = 4.0,
+                      lean: bool = False, thresholds: dict | None = None) -> dict:
     """One EvalConfig per head, with the geometry the head actually emits.
 
     The cloudburst head is point geometry, so its scorecard omits FSS --
     scoring station output on a grid config would silently report a
     neighbourhood metric over station index.
     """
-    return {name: EvalConfig(name=name, grid_km=grid_km, geometry=geom)
-            for name, geom in model.geometries.items()}
+    out = {}
+    for name, geom in model.geometries.items():
+        thr = (thresholds or {}).get(name, 0.5)
+        kw = dict(name=name, grid_km=grid_km, geometry=geom,
+                  headline_threshold=float(thr))
+        if lean:
+            # one threshold, two neighbourhoods -- ~10x cheaper per epoch
+            kw |= dict(thresholds=(float(thr),), neighborhood_km=(0.0, 50.0))
+        out[name] = EvalConfig(**kw)
+    return out
 
 
 @torch.no_grad()
@@ -115,7 +132,18 @@ def train(model: MultiTaskNowcaster, train_ds, val_ds, config: TrainConfig,
                             weight_decay=cfg.weight_decay)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=cfg.epochs)
     criterion = MultiTaskLoss(weights=cfg.loss_weights)
-    cfgs = head_eval_configs(model)
+    cfgs = head_eval_configs(model, lean=cfg.lean_validation)
+
+    wb = None
+    if cfg.wandb_project:
+        try:
+            import wandb
+            wb = wandb.init(project=cfg.wandb_project,
+                            name=cfg.wandb_run or cfg.run_dir.name,
+                            config={k: str(v) for k, v in vars(cfg).items()},
+                            resume="allow", id=cfg.wandb_run or None)
+        except Exception as e:      # logging must never take down a run
+            print(f"  W&B disabled ({type(e).__name__}: {e})")
 
     start_epoch, best = 0, -float("inf")
     if resume:
@@ -149,6 +177,7 @@ def train(model: MultiTaskNowcaster, train_ds, val_ds, config: TrainConfig,
                       " ".join(f"{k}={v.item():.4f}" for k, v in per_head.items()))
 
         sched.step()
+        train_s = time.time() - t0        # training only, before validation
         train_loss = running / max(len(train_dl), 1)
 
         result, _ = run_validation(model, val_dl, cfgs, lead_minutes,
@@ -156,8 +185,18 @@ def train(model: MultiTaskNowcaster, train_ds, val_ds, config: TrainConfig,
                                    device=dev)
         name, score = result.worst_head_lower_bound(cfg.checkpoint_metric)
 
+        epoch_s = time.time() - t0
         print(f"\nepoch {epoch}  train_loss {train_loss:.4f}  "
-              f"{time.time() - t0:.0f}s")
+              f"train {train_s:.0f}s  val {epoch_s - train_s:.0f}s  "
+              f"total {epoch_s:.0f}s")
+        if wb is not None:
+            wb.log({"epoch": epoch, "train_loss": train_loss,
+                    "train_seconds": train_s, "val_seconds": epoch_s - train_s,
+                    "checkpoint_metric": score,
+                    **{f"{h}/sedi": result[h].pooled["headline"].get("sedi", float("nan"))
+                       for h in result.names},
+                    **{f"{h}/csi": result[h].pooled["headline"]["csi"]
+                       for h in result.names}})
         print(result.summary_table().split("--- ")[0])
         if previous is not None:
             print(result.compare(previous, metric=cfg.checkpoint_metric))
