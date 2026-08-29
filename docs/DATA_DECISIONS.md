@@ -60,3 +60,38 @@ IMSRA learns ISRO's retrieval algorithm rather than atmospheric physics.
 See `docs/LIMITATIONS.md` §4b and §4c. 3DR spans the whole archive, avoids
 mixing instruments with different calibration methods, and sidesteps the
 3DS water-vapour resolution change.
+
+## INSAT-3DR scan cadence: both :15 and :45 — 30 minutes
+
+Confirmed. The 3DR file we hold is at 2345Z, and GPI files were observed at
+:15, so the satellite scans on the half hour at both slots.
+
+An earlier config listed only `:45` times after I removed `:15` as
+"unverified, inferred from a single file". That was right to flag but
+over-corrected: the cadence is genuinely 30 minutes, which **doubles the
+available temporal resolution** for the archive — 48 scans/day rather than 24.
+
+Consequences:
+- Archive planning uses 48 scans/day where full temporal coverage is wanted.
+- The model's context window can be built at true 30-minute spacing, matching
+  the SEVIR cadence we already subsample to, so no retiming is needed between
+  pretraining and fine-tuning.
+- The alignment-gate config still uses `:45` times only, deliberately: those
+  are the ones whose IMERG pairings were measured for cellularity. No reason
+  to change a gate config that is already specified.
+
+## Archive scoping: event-sampled, not continuous
+
+Continuous monsoon coverage is ~15 TB and overwhelmingly non-convective. At a
+3.8e-4 base rate, most of it is the model watching nothing happen — and SEVIR,
+which works, is ~12,000 events drawn from 526 storm days, not years of
+continuous record.
+
+So the archive is event-sampled: rank days by IMERG convective activity
+(cheap, no MOSDAC), request INSAT only for high-activity days, plus a
+**deliberate, documented sample of null days**.
+
+The null days are not optional. Training only on active days inflates the
+base rate the model sees, so it over-forecasts in operation, and the
+verification protocol's null test set has nothing to score against. They are
+sampled and recorded rather than dropped.

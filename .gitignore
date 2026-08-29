@@ -15,3 +15,6 @@ configs/*_local.json
 data/cache/
 data/cache_build.log
 runs_cached.log
+data/hydro/
+data/imerg_survey/
+data/imerg/

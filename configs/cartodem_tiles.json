@@ -1,0 +1,1622 @@
+{
+  "note": "1x1 degree tiles, priority order. Confirm Bhoonidhi's tile naming on the portal -- NxxEyyy is the common convention but was not verified against the live catalogue.",
+  "cap_per_day": 20,
+  "tiles": [
+    {
+      "lat": 29,
+      "lon": 77,
+      "region": "himalaya-uttarakhand",
+      "priority": 1,
+      "tile": "N29E077",
+      "why": "Uttarakhand 2021, Kedarnath-type. Steepest relief, orographic cloudburst."
+    },
+    {
+      "lat": 29,
+      "lon": 78,
+      "region": "himalaya-uttarakhand",
+      "priority": 1,
+      "tile": "N29E078",
+      "why": "Uttarakhand 2021, Kedarnath-type. Steepest relief, orographic cloudburst."
+    },
+    {
+      "lat": 29,
+      "lon": 79,
+      "region": "himalaya-uttarakhand",
+      "priority": 1,
+      "tile": "N29E079",
+      "why": "Uttarakhand 2021, Kedarnath-type. Steepest relief, orographic cloudburst."
+    },
+    {
+      "lat": 29,
+      "lon": 80,
+      "region": "himalaya-uttarakhand",
+      "priority": 1,
+      "tile": "N29E080",
+      "why": "Uttarakhand 2021, Kedarnath-type. Steepest relief, orographic cloudburst."
+    },
+    {
+      "lat": 30,
+      "lon": 77,
+      "region": "himalaya-uttarakhand",
+      "priority": 1,
+      "tile": "N30E077",
+      "why": "Uttarakhand 2021, Kedarnath-type. Steepest relief, orographic cloudburst."
+    },
+    {
+      "lat": 30,
+      "lon": 78,
+      "region": "himalaya-uttarakhand",
+      "priority": 1,
+      "tile": "N30E078",
+      "why": "Uttarakhand 2021, Kedarnath-type. Steepest relief, orographic cloudburst."
+    },
+    {
+      "lat": 30,
+      "lon": 79,
+      "region": "himalaya-uttarakhand",
+      "priority": 1,
+      "tile": "N30E079",
+      "why": "Uttarakhand 2021, Kedarnath-type. Steepest relief, orographic cloudburst."
+    },
+    {
+      "lat": 30,
+      "lon": 80,
+      "region": "himalaya-uttarakhand",
+      "priority": 1,
+      "tile": "N30E080",
+      "why": "Uttarakhand 2021, Kedarnath-type. Steepest relief, orographic cloudburst."
+    },
+    {
+      "lat": 31,
+      "lon": 77,
+      "region": "himalaya-uttarakhand",
+      "priority": 1,
+      "tile": "N31E077",
+      "why": "Uttarakhand 2021, Kedarnath-type. Steepest relief, orographic cloudburst."
+    },
+    {
+      "lat": 31,
+      "lon": 78,
+      "region": "himalaya-uttarakhand",
+      "priority": 1,
+      "tile": "N31E078",
+      "why": "Uttarakhand 2021, Kedarnath-type. Steepest relief, orographic cloudburst."
+    },
+    {
+      "lat": 31,
+      "lon": 79,
+      "region": "himalaya-uttarakhand",
+      "priority": 1,
+      "tile": "N31E079",
+      "why": "Uttarakhand 2021, Kedarnath-type. Steepest relief, orographic cloudburst."
+    },
+    {
+      "lat": 31,
+      "lon": 80,
+      "region": "himalaya-uttarakhand",
+      "priority": 1,
+      "tile": "N31E080",
+      "why": "Uttarakhand 2021, Kedarnath-type. Steepest relief, orographic cloudburst."
+    },
+    {
+      "lat": 30,
+      "lon": 75,
+      "region": "himalaya-himachal",
+      "priority": 1,
+      "tile": "N30E075",
+      "why": "Himachal 2023, Amarnath 2022. High relief, narrow valleys."
+    },
+    {
+      "lat": 30,
+      "lon": 76,
+      "region": "himalaya-himachal",
+      "priority": 1,
+      "tile": "N30E076",
+      "why": "Himachal 2023, Amarnath 2022. High relief, narrow valleys."
+    },
+    {
+      "lat": 31,
+      "lon": 75,
+      "region": "himalaya-himachal",
+      "priority": 1,
+      "tile": "N31E075",
+      "why": "Himachal 2023, Amarnath 2022. High relief, narrow valleys."
+    },
+    {
+      "lat": 31,
+      "lon": 76,
+      "region": "himalaya-himachal",
+      "priority": 1,
+      "tile": "N31E076",
+      "why": "Himachal 2023, Amarnath 2022. High relief, narrow valleys."
+    },
+    {
+      "lat": 32,
+      "lon": 75,
+      "region": "himalaya-himachal",
+      "priority": 1,
+      "tile": "N32E075",
+      "why": "Himachal 2023, Amarnath 2022. High relief, narrow valleys."
+    },
+    {
+      "lat": 32,
+      "lon": 76,
+      "region": "himalaya-himachal",
+      "priority": 1,
+      "tile": "N32E076",
+      "why": "Himachal 2023, Amarnath 2022. High relief, narrow valleys."
+    },
+    {
+      "lat": 32,
+      "lon": 77,
+      "region": "himalaya-himachal",
+      "priority": 1,
+      "tile": "N32E077",
+      "why": "Himachal 2023, Amarnath 2022. High relief, narrow valleys."
+    },
+    {
+      "lat": 32,
+      "lon": 78,
+      "region": "himalaya-himachal",
+      "priority": 1,
+      "tile": "N32E078",
+      "why": "Himachal 2023, Amarnath 2022. High relief, narrow valleys."
+    },
+    {
+      "lat": 33,
+      "lon": 75,
+      "region": "himalaya-himachal",
+      "priority": 1,
+      "tile": "N33E075",
+      "why": "Himachal 2023, Amarnath 2022. High relief, narrow valleys."
+    },
+    {
+      "lat": 33,
+      "lon": 76,
+      "region": "himalaya-himachal",
+      "priority": 1,
+      "tile": "N33E076",
+      "why": "Himachal 2023, Amarnath 2022. High relief, narrow valleys."
+    },
+    {
+      "lat": 33,
+      "lon": 77,
+      "region": "himalaya-himachal",
+      "priority": 1,
+      "tile": "N33E077",
+      "why": "Himachal 2023, Amarnath 2022. High relief, narrow valleys."
+    },
+    {
+      "lat": 33,
+      "lon": 78,
+      "region": "himalaya-himachal",
+      "priority": 1,
+      "tile": "N33E078",
+      "why": "Himachal 2023, Amarnath 2022. High relief, narrow valleys."
+    },
+    {
+      "lat": 8,
+      "lon": 74,
+      "region": "western-ghats-kerala",
+      "priority": 1,
+      "tile": "N08E074",
+      "why": "Wayanad 2024, Kerala 2018. Orographic, landslide-coupled."
+    },
+    {
+      "lat": 8,
+      "lon": 75,
+      "region": "western-ghats-kerala",
+      "priority": 1,
+      "tile": "N08E075",
+      "why": "Wayanad 2024, Kerala 2018. Orographic, landslide-coupled."
+    },
+    {
+      "lat": 8,
+      "lon": 76,
+      "region": "western-ghats-kerala",
+      "priority": 1,
+      "tile": "N08E076",
+      "why": "Wayanad 2024, Kerala 2018. Orographic, landslide-coupled."
+    },
+    {
+      "lat": 8,
+      "lon": 77,
+      "region": "western-ghats-kerala",
+      "priority": 1,
+      "tile": "N08E077",
+      "why": "Wayanad 2024, Kerala 2018. Orographic, landslide-coupled."
+    },
+    {
+      "lat": 9,
+      "lon": 74,
+      "region": "western-ghats-kerala",
+      "priority": 1,
+      "tile": "N09E074",
+      "why": "Wayanad 2024, Kerala 2018. Orographic, landslide-coupled."
+    },
+    {
+      "lat": 9,
+      "lon": 75,
+      "region": "western-ghats-kerala",
+      "priority": 1,
+      "tile": "N09E075",
+      "why": "Wayanad 2024, Kerala 2018. Orographic, landslide-coupled."
+    },
+    {
+      "lat": 9,
+      "lon": 76,
+      "region": "western-ghats-kerala",
+      "priority": 1,
+      "tile": "N09E076",
+      "why": "Wayanad 2024, Kerala 2018. Orographic, landslide-coupled."
+    },
+    {
+      "lat": 9,
+      "lon": 77,
+      "region": "western-ghats-kerala",
+      "priority": 1,
+      "tile": "N09E077",
+      "why": "Wayanad 2024, Kerala 2018. Orographic, landslide-coupled."
+    },
+    {
+      "lat": 10,
+      "lon": 74,
+      "region": "western-ghats-kerala",
+      "priority": 1,
+      "tile": "N10E074",
+      "why": "Wayanad 2024, Kerala 2018. Orographic, landslide-coupled."
+    },
+    {
+      "lat": 10,
+      "lon": 75,
+      "region": "western-ghats-kerala",
+      "priority": 1,
+      "tile": "N10E075",
+      "why": "Wayanad 2024, Kerala 2018. Orographic, landslide-coupled."
+    },
+    {
+      "lat": 10,
+      "lon": 76,
+      "region": "western-ghats-kerala",
+      "priority": 1,
+      "tile": "N10E076",
+      "why": "Wayanad 2024, Kerala 2018. Orographic, landslide-coupled."
+    },
+    {
+      "lat": 10,
+      "lon": 77,
+      "region": "western-ghats-kerala",
+      "priority": 1,
+      "tile": "N10E077",
+      "why": "Wayanad 2024, Kerala 2018. Orographic, landslide-coupled."
+    },
+    {
+      "lat": 11,
+      "lon": 74,
+      "region": "western-ghats-kerala",
+      "priority": 1,
+      "tile": "N11E074",
+      "why": "Wayanad 2024, Kerala 2018. Orographic, landslide-coupled."
+    },
+    {
+      "lat": 11,
+      "lon": 75,
+      "region": "western-ghats-kerala",
+      "priority": 1,
+      "tile": "N11E075",
+      "why": "Wayanad 2024, Kerala 2018. Orographic, landslide-coupled."
+    },
+    {
+      "lat": 11,
+      "lon": 76,
+      "region": "western-ghats-kerala",
+      "priority": 1,
+      "tile": "N11E076",
+      "why": "Wayanad 2024, Kerala 2018. Orographic, landslide-coupled."
+    },
+    {
+      "lat": 11,
+      "lon": 77,
+      "region": "western-ghats-kerala",
+      "priority": 1,
+      "tile": "N11E077",
+      "why": "Wayanad 2024, Kerala 2018. Orographic, landslide-coupled."
+    },
+    {
+      "lat": 12,
+      "lon": 74,
+      "region": "western-ghats-kerala",
+      "priority": 1,
+      "tile": "N12E074",
+      "why": "Wayanad 2024, Kerala 2018. Orographic, landslide-coupled."
+    },
+    {
+      "lat": 12,
+      "lon": 75,
+      "region": "western-ghats-kerala",
+      "priority": 1,
+      "tile": "N12E075",
+      "why": "Wayanad 2024, Kerala 2018. Orographic, landslide-coupled."
+    },
+    {
+      "lat": 12,
+      "lon": 76,
+      "region": "western-ghats-kerala",
+      "priority": 1,
+      "tile": "N12E076",
+      "why": "Wayanad 2024, Kerala 2018. Orographic, landslide-coupled."
+    },
+    {
+      "lat": 12,
+      "lon": 77,
+      "region": "western-ghats-kerala",
+      "priority": 1,
+      "tile": "N12E077",
+      "why": "Wayanad 2024, Kerala 2018. Orographic, landslide-coupled."
+    },
+    {
+      "lat": 13,
+      "lon": 72,
+      "region": "western-ghats-north",
+      "priority": 2,
+      "tile": "N13E072",
+      "why": "Mumbai 2017. Ghat escarpment plus urban catchment."
+    },
+    {
+      "lat": 13,
+      "lon": 73,
+      "region": "western-ghats-north",
+      "priority": 2,
+      "tile": "N13E073",
+      "why": "Mumbai 2017. Ghat escarpment plus urban catchment."
+    },
+    {
+      "lat": 13,
+      "lon": 74,
+      "region": "western-ghats-north",
+      "priority": 2,
+      "tile": "N13E074",
+      "why": "Mumbai 2017. Ghat escarpment plus urban catchment."
+    },
+    {
+      "lat": 13,
+      "lon": 75,
+      "region": "western-ghats-north",
+      "priority": 2,
+      "tile": "N13E075",
+      "why": "Mumbai 2017. Ghat escarpment plus urban catchment."
+    },
+    {
+      "lat": 14,
+      "lon": 72,
+      "region": "western-ghats-north",
+      "priority": 2,
+      "tile": "N14E072",
+      "why": "Mumbai 2017. Ghat escarpment plus urban catchment."
+    },
+    {
+      "lat": 14,
+      "lon": 73,
+      "region": "western-ghats-north",
+      "priority": 2,
+      "tile": "N14E073",
+      "why": "Mumbai 2017. Ghat escarpment plus urban catchment."
+    },
+    {
+      "lat": 14,
+      "lon": 74,
+      "region": "western-ghats-north",
+      "priority": 2,
+      "tile": "N14E074",
+      "why": "Mumbai 2017. Ghat escarpment plus urban catchment."
+    },
+    {
+      "lat": 14,
+      "lon": 75,
+      "region": "western-ghats-north",
+      "priority": 2,
+      "tile": "N14E075",
+      "why": "Mumbai 2017. Ghat escarpment plus urban catchment."
+    },
+    {
+      "lat": 15,
+      "lon": 72,
+      "region": "western-ghats-north",
+      "priority": 2,
+      "tile": "N15E072",
+      "why": "Mumbai 2017. Ghat escarpment plus urban catchment."
+    },
+    {
+      "lat": 15,
+      "lon": 73,
+      "region": "western-ghats-north",
+      "priority": 2,
+      "tile": "N15E073",
+      "why": "Mumbai 2017. Ghat escarpment plus urban catchment."
+    },
+    {
+      "lat": 15,
+      "lon": 74,
+      "region": "western-ghats-north",
+      "priority": 2,
+      "tile": "N15E074",
+      "why": "Mumbai 2017. Ghat escarpment plus urban catchment."
+    },
+    {
+      "lat": 15,
+      "lon": 75,
+      "region": "western-ghats-north",
+      "priority": 2,
+      "tile": "N15E075",
+      "why": "Mumbai 2017. Ghat escarpment plus urban catchment."
+    },
+    {
+      "lat": 16,
+      "lon": 72,
+      "region": "western-ghats-north",
+      "priority": 2,
+      "tile": "N16E072",
+      "why": "Mumbai 2017. Ghat escarpment plus urban catchment."
+    },
+    {
+      "lat": 16,
+      "lon": 73,
+      "region": "western-ghats-north",
+      "priority": 2,
+      "tile": "N16E073",
+      "why": "Mumbai 2017. Ghat escarpment plus urban catchment."
+    },
+    {
+      "lat": 16,
+      "lon": 74,
+      "region": "western-ghats-north",
+      "priority": 2,
+      "tile": "N16E074",
+      "why": "Mumbai 2017. Ghat escarpment plus urban catchment."
+    },
+    {
+      "lat": 16,
+      "lon": 75,
+      "region": "western-ghats-north",
+      "priority": 2,
+      "tile": "N16E075",
+      "why": "Mumbai 2017. Ghat escarpment plus urban catchment."
+    },
+    {
+      "lat": 17,
+      "lon": 72,
+      "region": "western-ghats-north",
+      "priority": 2,
+      "tile": "N17E072",
+      "why": "Mumbai 2017. Ghat escarpment plus urban catchment."
+    },
+    {
+      "lat": 17,
+      "lon": 73,
+      "region": "western-ghats-north",
+      "priority": 2,
+      "tile": "N17E073",
+      "why": "Mumbai 2017. Ghat escarpment plus urban catchment."
+    },
+    {
+      "lat": 17,
+      "lon": 74,
+      "region": "western-ghats-north",
+      "priority": 2,
+      "tile": "N17E074",
+      "why": "Mumbai 2017. Ghat escarpment plus urban catchment."
+    },
+    {
+      "lat": 17,
+      "lon": 75,
+      "region": "western-ghats-north",
+      "priority": 2,
+      "tile": "N17E075",
+      "why": "Mumbai 2017. Ghat escarpment plus urban catchment."
+    },
+    {
+      "lat": 18,
+      "lon": 72,
+      "region": "western-ghats-north",
+      "priority": 2,
+      "tile": "N18E072",
+      "why": "Mumbai 2017. Ghat escarpment plus urban catchment."
+    },
+    {
+      "lat": 18,
+      "lon": 73,
+      "region": "western-ghats-north",
+      "priority": 2,
+      "tile": "N18E073",
+      "why": "Mumbai 2017. Ghat escarpment plus urban catchment."
+    },
+    {
+      "lat": 18,
+      "lon": 74,
+      "region": "western-ghats-north",
+      "priority": 2,
+      "tile": "N18E074",
+      "why": "Mumbai 2017. Ghat escarpment plus urban catchment."
+    },
+    {
+      "lat": 18,
+      "lon": 75,
+      "region": "western-ghats-north",
+      "priority": 2,
+      "tile": "N18E075",
+      "why": "Mumbai 2017. Ghat escarpment plus urban catchment."
+    },
+    {
+      "lat": 19,
+      "lon": 72,
+      "region": "western-ghats-north",
+      "priority": 2,
+      "tile": "N19E072",
+      "why": "Mumbai 2017. Ghat escarpment plus urban catchment."
+    },
+    {
+      "lat": 19,
+      "lon": 73,
+      "region": "western-ghats-north",
+      "priority": 2,
+      "tile": "N19E073",
+      "why": "Mumbai 2017. Ghat escarpment plus urban catchment."
+    },
+    {
+      "lat": 19,
+      "lon": 74,
+      "region": "western-ghats-north",
+      "priority": 2,
+      "tile": "N19E074",
+      "why": "Mumbai 2017. Ghat escarpment plus urban catchment."
+    },
+    {
+      "lat": 19,
+      "lon": 75,
+      "region": "western-ghats-north",
+      "priority": 2,
+      "tile": "N19E075",
+      "why": "Mumbai 2017. Ghat escarpment plus urban catchment."
+    },
+    {
+      "lat": 24,
+      "lon": 89,
+      "region": "northeast-hills",
+      "priority": 2,
+      "tile": "N24E089",
+      "why": "Highest rainfall on earth (Cherrapunji). Steep, data-sparse."
+    },
+    {
+      "lat": 24,
+      "lon": 90,
+      "region": "northeast-hills",
+      "priority": 2,
+      "tile": "N24E090",
+      "why": "Highest rainfall on earth (Cherrapunji). Steep, data-sparse."
+    },
+    {
+      "lat": 24,
+      "lon": 91,
+      "region": "northeast-hills",
+      "priority": 2,
+      "tile": "N24E091",
+      "why": "Highest rainfall on earth (Cherrapunji). Steep, data-sparse."
+    },
+    {
+      "lat": 24,
+      "lon": 92,
+      "region": "northeast-hills",
+      "priority": 2,
+      "tile": "N24E092",
+      "why": "Highest rainfall on earth (Cherrapunji). Steep, data-sparse."
+    },
+    {
+      "lat": 24,
+      "lon": 93,
+      "region": "northeast-hills",
+      "priority": 2,
+      "tile": "N24E093",
+      "why": "Highest rainfall on earth (Cherrapunji). Steep, data-sparse."
+    },
+    {
+      "lat": 24,
+      "lon": 94,
+      "region": "northeast-hills",
+      "priority": 2,
+      "tile": "N24E094",
+      "why": "Highest rainfall on earth (Cherrapunji). Steep, data-sparse."
+    },
+    {
+      "lat": 24,
+      "lon": 95,
+      "region": "northeast-hills",
+      "priority": 2,
+      "tile": "N24E095",
+      "why": "Highest rainfall on earth (Cherrapunji). Steep, data-sparse."
+    },
+    {
+      "lat": 25,
+      "lon": 89,
+      "region": "northeast-hills",
+      "priority": 2,
+      "tile": "N25E089",
+      "why": "Highest rainfall on earth (Cherrapunji). Steep, data-sparse."
+    },
+    {
+      "lat": 25,
+      "lon": 90,
+      "region": "northeast-hills",
+      "priority": 2,
+      "tile": "N25E090",
+      "why": "Highest rainfall on earth (Cherrapunji). Steep, data-sparse."
+    },
+    {
+      "lat": 25,
+      "lon": 91,
+      "region": "northeast-hills",
+      "priority": 2,
+      "tile": "N25E091",
+      "why": "Highest rainfall on earth (Cherrapunji). Steep, data-sparse."
+    },
+    {
+      "lat": 25,
+      "lon": 92,
+      "region": "northeast-hills",
+      "priority": 2,
+      "tile": "N25E092",
+      "why": "Highest rainfall on earth (Cherrapunji). Steep, data-sparse."
+    },
+    {
+      "lat": 25,
+      "lon": 93,
+      "region": "northeast-hills",
+      "priority": 2,
+      "tile": "N25E093",
+      "why": "Highest rainfall on earth (Cherrapunji). Steep, data-sparse."
+    },
+    {
+      "lat": 25,
+      "lon": 94,
+      "region": "northeast-hills",
+      "priority": 2,
+      "tile": "N25E094",
+      "why": "Highest rainfall on earth (Cherrapunji). Steep, data-sparse."
+    },
+    {
+      "lat": 25,
+      "lon": 95,
+      "region": "northeast-hills",
+      "priority": 2,
+      "tile": "N25E095",
+      "why": "Highest rainfall on earth (Cherrapunji). Steep, data-sparse."
+    },
+    {
+      "lat": 26,
+      "lon": 89,
+      "region": "northeast-hills",
+      "priority": 2,
+      "tile": "N26E089",
+      "why": "Highest rainfall on earth (Cherrapunji). Steep, data-sparse."
+    },
+    {
+      "lat": 26,
+      "lon": 90,
+      "region": "northeast-hills",
+      "priority": 2,
+      "tile": "N26E090",
+      "why": "Highest rainfall on earth (Cherrapunji). Steep, data-sparse."
+    },
+    {
+      "lat": 26,
+      "lon": 91,
+      "region": "northeast-hills",
+      "priority": 2,
+      "tile": "N26E091",
+      "why": "Highest rainfall on earth (Cherrapunji). Steep, data-sparse."
+    },
+    {
+      "lat": 26,
+      "lon": 92,
+      "region": "northeast-hills",
+      "priority": 2,
+      "tile": "N26E092",
+      "why": "Highest rainfall on earth (Cherrapunji). Steep, data-sparse."
+    },
+    {
+      "lat": 26,
+      "lon": 93,
+      "region": "northeast-hills",
+      "priority": 2,
+      "tile": "N26E093",
+      "why": "Highest rainfall on earth (Cherrapunji). Steep, data-sparse."
+    },
+    {
+      "lat": 26,
+      "lon": 94,
+      "region": "northeast-hills",
+      "priority": 2,
+      "tile": "N26E094",
+      "why": "Highest rainfall on earth (Cherrapunji). Steep, data-sparse."
+    },
+    {
+      "lat": 26,
+      "lon": 95,
+      "region": "northeast-hills",
+      "priority": 2,
+      "tile": "N26E095",
+      "why": "Highest rainfall on earth (Cherrapunji). Steep, data-sparse."
+    },
+    {
+      "lat": 27,
+      "lon": 89,
+      "region": "northeast-hills",
+      "priority": 2,
+      "tile": "N27E089",
+      "why": "Highest rainfall on earth (Cherrapunji). Steep, data-sparse."
+    },
+    {
+      "lat": 27,
+      "lon": 90,
+      "region": "northeast-hills",
+      "priority": 2,
+      "tile": "N27E090",
+      "why": "Highest rainfall on earth (Cherrapunji). Steep, data-sparse."
+    },
+    {
+      "lat": 27,
+      "lon": 91,
+      "region": "northeast-hills",
+      "priority": 2,
+      "tile": "N27E091",
+      "why": "Highest rainfall on earth (Cherrapunji). Steep, data-sparse."
+    },
+    {
+      "lat": 27,
+      "lon": 92,
+      "region": "northeast-hills",
+      "priority": 2,
+      "tile": "N27E092",
+      "why": "Highest rainfall on earth (Cherrapunji). Steep, data-sparse."
+    },
+    {
+      "lat": 27,
+      "lon": 93,
+      "region": "northeast-hills",
+      "priority": 2,
+      "tile": "N27E093",
+      "why": "Highest rainfall on earth (Cherrapunji). Steep, data-sparse."
+    },
+    {
+      "lat": 27,
+      "lon": 94,
+      "region": "northeast-hills",
+      "priority": 2,
+      "tile": "N27E094",
+      "why": "Highest rainfall on earth (Cherrapunji). Steep, data-sparse."
+    },
+    {
+      "lat": 27,
+      "lon": 95,
+      "region": "northeast-hills",
+      "priority": 2,
+      "tile": "N27E095",
+      "why": "Highest rainfall on earth (Cherrapunji). Steep, data-sparse."
+    },
+    {
+      "lat": 12,
+      "lon": 78,
+      "region": "deccan-urban",
+      "priority": 3,
+      "tile": "N12E078",
+      "why": "Hyderabad 2020, Bengaluru 2022. Low relief, urban drainage dominates."
+    },
+    {
+      "lat": 12,
+      "lon": 79,
+      "region": "deccan-urban",
+      "priority": 3,
+      "tile": "N12E079",
+      "why": "Hyderabad 2020, Bengaluru 2022. Low relief, urban drainage dominates."
+    },
+    {
+      "lat": 13,
+      "lon": 76,
+      "region": "deccan-urban",
+      "priority": 3,
+      "tile": "N13E076",
+      "why": "Hyderabad 2020, Bengaluru 2022. Low relief, urban drainage dominates."
+    },
+    {
+      "lat": 13,
+      "lon": 77,
+      "region": "deccan-urban",
+      "priority": 3,
+      "tile": "N13E077",
+      "why": "Hyderabad 2020, Bengaluru 2022. Low relief, urban drainage dominates."
+    },
+    {
+      "lat": 13,
+      "lon": 78,
+      "region": "deccan-urban",
+      "priority": 3,
+      "tile": "N13E078",
+      "why": "Hyderabad 2020, Bengaluru 2022. Low relief, urban drainage dominates."
+    },
+    {
+      "lat": 13,
+      "lon": 79,
+      "region": "deccan-urban",
+      "priority": 3,
+      "tile": "N13E079",
+      "why": "Hyderabad 2020, Bengaluru 2022. Low relief, urban drainage dominates."
+    },
+    {
+      "lat": 14,
+      "lon": 76,
+      "region": "deccan-urban",
+      "priority": 3,
+      "tile": "N14E076",
+      "why": "Hyderabad 2020, Bengaluru 2022. Low relief, urban drainage dominates."
+    },
+    {
+      "lat": 14,
+      "lon": 77,
+      "region": "deccan-urban",
+      "priority": 3,
+      "tile": "N14E077",
+      "why": "Hyderabad 2020, Bengaluru 2022. Low relief, urban drainage dominates."
+    },
+    {
+      "lat": 14,
+      "lon": 78,
+      "region": "deccan-urban",
+      "priority": 3,
+      "tile": "N14E078",
+      "why": "Hyderabad 2020, Bengaluru 2022. Low relief, urban drainage dominates."
+    },
+    {
+      "lat": 14,
+      "lon": 79,
+      "region": "deccan-urban",
+      "priority": 3,
+      "tile": "N14E079",
+      "why": "Hyderabad 2020, Bengaluru 2022. Low relief, urban drainage dominates."
+    },
+    {
+      "lat": 15,
+      "lon": 76,
+      "region": "deccan-urban",
+      "priority": 3,
+      "tile": "N15E076",
+      "why": "Hyderabad 2020, Bengaluru 2022. Low relief, urban drainage dominates."
+    },
+    {
+      "lat": 15,
+      "lon": 77,
+      "region": "deccan-urban",
+      "priority": 3,
+      "tile": "N15E077",
+      "why": "Hyderabad 2020, Bengaluru 2022. Low relief, urban drainage dominates."
+    },
+    {
+      "lat": 15,
+      "lon": 78,
+      "region": "deccan-urban",
+      "priority": 3,
+      "tile": "N15E078",
+      "why": "Hyderabad 2020, Bengaluru 2022. Low relief, urban drainage dominates."
+    },
+    {
+      "lat": 15,
+      "lon": 79,
+      "region": "deccan-urban",
+      "priority": 3,
+      "tile": "N15E079",
+      "why": "Hyderabad 2020, Bengaluru 2022. Low relief, urban drainage dominates."
+    },
+    {
+      "lat": 16,
+      "lon": 76,
+      "region": "deccan-urban",
+      "priority": 3,
+      "tile": "N16E076",
+      "why": "Hyderabad 2020, Bengaluru 2022. Low relief, urban drainage dominates."
+    },
+    {
+      "lat": 16,
+      "lon": 77,
+      "region": "deccan-urban",
+      "priority": 3,
+      "tile": "N16E077",
+      "why": "Hyderabad 2020, Bengaluru 2022. Low relief, urban drainage dominates."
+    },
+    {
+      "lat": 16,
+      "lon": 78,
+      "region": "deccan-urban",
+      "priority": 3,
+      "tile": "N16E078",
+      "why": "Hyderabad 2020, Bengaluru 2022. Low relief, urban drainage dominates."
+    },
+    {
+      "lat": 16,
+      "lon": 79,
+      "region": "deccan-urban",
+      "priority": 3,
+      "tile": "N16E079",
+      "why": "Hyderabad 2020, Bengaluru 2022. Low relief, urban drainage dominates."
+    },
+    {
+      "lat": 17,
+      "lon": 76,
+      "region": "deccan-urban",
+      "priority": 3,
+      "tile": "N17E076",
+      "why": "Hyderabad 2020, Bengaluru 2022. Low relief, urban drainage dominates."
+    },
+    {
+      "lat": 17,
+      "lon": 77,
+      "region": "deccan-urban",
+      "priority": 3,
+      "tile": "N17E077",
+      "why": "Hyderabad 2020, Bengaluru 2022. Low relief, urban drainage dominates."
+    },
+    {
+      "lat": 17,
+      "lon": 78,
+      "region": "deccan-urban",
+      "priority": 3,
+      "tile": "N17E078",
+      "why": "Hyderabad 2020, Bengaluru 2022. Low relief, urban drainage dominates."
+    },
+    {
+      "lat": 17,
+      "lon": 79,
+      "region": "deccan-urban",
+      "priority": 3,
+      "tile": "N17E079",
+      "why": "Hyderabad 2020, Bengaluru 2022. Low relief, urban drainage dominates."
+    },
+    {
+      "lat": 18,
+      "lon": 76,
+      "region": "deccan-urban",
+      "priority": 3,
+      "tile": "N18E076",
+      "why": "Hyderabad 2020, Bengaluru 2022. Low relief, urban drainage dominates."
+    },
+    {
+      "lat": 18,
+      "lon": 77,
+      "region": "deccan-urban",
+      "priority": 3,
+      "tile": "N18E077",
+      "why": "Hyderabad 2020, Bengaluru 2022. Low relief, urban drainage dominates."
+    },
+    {
+      "lat": 18,
+      "lon": 78,
+      "region": "deccan-urban",
+      "priority": 3,
+      "tile": "N18E078",
+      "why": "Hyderabad 2020, Bengaluru 2022. Low relief, urban drainage dominates."
+    },
+    {
+      "lat": 18,
+      "lon": 79,
+      "region": "deccan-urban",
+      "priority": 3,
+      "tile": "N18E079",
+      "why": "Hyderabad 2020, Bengaluru 2022. Low relief, urban drainage dominates."
+    },
+    {
+      "lat": 19,
+      "lon": 76,
+      "region": "deccan-urban",
+      "priority": 3,
+      "tile": "N19E076",
+      "why": "Hyderabad 2020, Bengaluru 2022. Low relief, urban drainage dominates."
+    },
+    {
+      "lat": 19,
+      "lon": 77,
+      "region": "deccan-urban",
+      "priority": 3,
+      "tile": "N19E077",
+      "why": "Hyderabad 2020, Bengaluru 2022. Low relief, urban drainage dominates."
+    },
+    {
+      "lat": 19,
+      "lon": 78,
+      "region": "deccan-urban",
+      "priority": 3,
+      "tile": "N19E078",
+      "why": "Hyderabad 2020, Bengaluru 2022. Low relief, urban drainage dominates."
+    },
+    {
+      "lat": 19,
+      "lon": 79,
+      "region": "deccan-urban",
+      "priority": 3,
+      "tile": "N19E079",
+      "why": "Hyderabad 2020, Bengaluru 2022. Low relief, urban drainage dominates."
+    },
+    {
+      "lat": 11,
+      "lon": 79,
+      "region": "chennai-coastal",
+      "priority": 3,
+      "tile": "N11E079",
+      "why": "Chennai 2015. Flat coastal, drainage-limited flooding."
+    },
+    {
+      "lat": 11,
+      "lon": 80,
+      "region": "chennai-coastal",
+      "priority": 3,
+      "tile": "N11E080",
+      "why": "Chennai 2015. Flat coastal, drainage-limited flooding."
+    },
+    {
+      "lat": 12,
+      "lon": 80,
+      "region": "chennai-coastal",
+      "priority": 3,
+      "tile": "N12E080",
+      "why": "Chennai 2015. Flat coastal, drainage-limited flooding."
+    },
+    {
+      "lat": 13,
+      "lon": 80,
+      "region": "chennai-coastal",
+      "priority": 3,
+      "tile": "N13E080",
+      "why": "Chennai 2015. Flat coastal, drainage-limited flooding."
+    },
+    {
+      "lat": 24,
+      "lon": 76,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N24E076",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 24,
+      "lon": 77,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N24E077",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 24,
+      "lon": 78,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N24E078",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 24,
+      "lon": 79,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N24E079",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 24,
+      "lon": 80,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N24E080",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 24,
+      "lon": 81,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N24E081",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 24,
+      "lon": 82,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N24E082",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 24,
+      "lon": 83,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N24E083",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 24,
+      "lon": 84,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N24E084",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 24,
+      "lon": 85,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N24E085",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 24,
+      "lon": 86,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N24E086",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 24,
+      "lon": 87,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N24E087",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 25,
+      "lon": 76,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N25E076",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 25,
+      "lon": 77,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N25E077",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 25,
+      "lon": 78,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N25E078",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 25,
+      "lon": 79,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N25E079",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 25,
+      "lon": 80,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N25E080",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 25,
+      "lon": 81,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N25E081",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 25,
+      "lon": 82,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N25E082",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 25,
+      "lon": 83,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N25E083",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 25,
+      "lon": 84,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N25E084",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 25,
+      "lon": 85,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N25E085",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 25,
+      "lon": 86,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N25E086",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 25,
+      "lon": 87,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N25E087",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 26,
+      "lon": 76,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N26E076",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 26,
+      "lon": 77,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N26E077",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 26,
+      "lon": 78,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N26E078",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 26,
+      "lon": 79,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N26E079",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 26,
+      "lon": 80,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N26E080",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 26,
+      "lon": 81,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N26E081",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 26,
+      "lon": 82,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N26E082",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 26,
+      "lon": 83,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N26E083",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 26,
+      "lon": 84,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N26E084",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 26,
+      "lon": 85,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N26E085",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 26,
+      "lon": 86,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N26E086",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 26,
+      "lon": 87,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N26E087",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 27,
+      "lon": 76,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N27E076",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 27,
+      "lon": 77,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N27E077",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 27,
+      "lon": 78,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N27E078",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 27,
+      "lon": 79,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N27E079",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 27,
+      "lon": 80,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N27E080",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 27,
+      "lon": 81,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N27E081",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 27,
+      "lon": 82,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N27E082",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 27,
+      "lon": 83,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N27E083",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 27,
+      "lon": 84,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N27E084",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 27,
+      "lon": 85,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N27E085",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 27,
+      "lon": 86,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N27E086",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 27,
+      "lon": 87,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N27E087",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 28,
+      "lon": 76,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N28E076",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 28,
+      "lon": 77,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N28E077",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 28,
+      "lon": 78,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N28E078",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 28,
+      "lon": 79,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N28E079",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 28,
+      "lon": 80,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N28E080",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 28,
+      "lon": 81,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N28E081",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 28,
+      "lon": 82,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N28E082",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 28,
+      "lon": 83,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N28E083",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 28,
+      "lon": 84,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N28E084",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 28,
+      "lon": 85,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N28E085",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 28,
+      "lon": 86,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N28E086",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 28,
+      "lon": 87,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N28E087",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 29,
+      "lon": 76,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N29E076",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 29,
+      "lon": 81,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N29E081",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 29,
+      "lon": 82,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N29E082",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 29,
+      "lon": 83,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N29E083",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 29,
+      "lon": 84,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N29E084",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 29,
+      "lon": 85,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N29E085",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 29,
+      "lon": 86,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N29E086",
+      "why": "Flat. Low DEM value, included last for completeness."
+    },
+    {
+      "lat": 29,
+      "lon": 87,
+      "region": "indo-gangetic",
+      "priority": 4,
+      "tile": "N29E087",
+      "why": "Flat. Low DEM value, included last for completeness."
+    }
+  ]
+}

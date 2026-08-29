@@ -30,7 +30,7 @@
     "1245"
   ],
   "_already_held": "2345 (3RIMG_01AUG2025_2345_L1B_STD_V01R00.h5) -- 7 scenes total, gate needs >= 5",
-  "_scan_schedule": "All times are :45, the slot confirmed present in the 2345Z file we already hold. An earlier version of this config also listed :15 times, which was INFERRED from a single :45 file and never verified -- removed rather than risk empty requests.",
+  "_scan_schedule": "INSAT-3DR scans every 30 min at BOTH :15 and :45. The :15 slot is CONFIRMED by GPI files observed at that time. An earlier note called :15 unverified and removed it; that was over-cautious. Cadence for archive planning is 48 scans/day, not 24.",
   "_imerg_pairing": {
     "2245": "IMERG 2230-2259  152 heavy cores, score 151.8 (most cellular of the day)",
     "2145": "IMERG 2130-2159  146 cores, score 146.4",
