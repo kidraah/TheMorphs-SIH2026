@@ -102,3 +102,67 @@ def test_opt_out_is_honoured():
              env_extra={"NOWCAST_NO_THREAD_PIN": "1"})
     assert r.returncode == 0, r.stderr[-2000:]
     assert r.stdout.strip() == "None"
+
+
+# --------------------------------------------------------------------------
+# The real ingest path, not a synthetic swath
+# --------------------------------------------------------------------------
+
+REAL_SCAN = ("/Users/evad/test_ff/3RIMG_L1B_STD/2025/01AUG/"
+             "3RIMG_01AUG2025_2345_L1B_STD_V01R00.h5")
+
+REAL_INGEST_PATH = textwrap.dedent(f"""
+    from nowcast_data._threads import ensure_pinned_or_reexec
+    ensure_pinned_or_reexec()
+    import nowcast_data
+    from nowcast_data.insat import ingest_scan
+    arrays, chk = ingest_scan({REAL_SCAN!r}, ("TIR1", "WV"), strict=False)
+    assert chk.passed
+    import torch
+    _ = torch.backends.mps.is_available()      # GPU probe AFTER resampling
+    from nowcast_model import ModelConfig, MultiTaskNowcaster
+    m = MultiTaskNowcaster(ModelConfig(in_channels=2, context_frames=2,
+            grid_size=96, lead_steps=6, dim=16, depth=1)).eval()
+    with torch.no_grad():
+        m(torch.randn(1, 2, 2, 96, 96), torch.rand(1, 4, 2) * 2 - 1)
+    print("REAL_PATH_OK")
+""")
+
+
+@pytest.mark.skipif(not os.path.exists(REAL_SCAN), reason="real 3DR scan absent")
+def test_real_ingest_then_infer_survives():
+    """The gap this closes: the synthetic test above uses
+    pyresample.kd_tree.resample_nearest directly, but ingest_scan goes through
+    SATPY's resample path. The synthetic test passed while the real service
+    path aborted with 'OMP: Error #15' -- a test that was green while
+    production died.
+
+    It also pins the ordering finding: probing the GPU
+    (torch.backends.mps.is_available) before the resampling is what triggers
+    it, so ingest must complete first.
+    """
+    r = _run(REAL_INGEST_PATH)
+    assert r.returncode == 0, (
+        f"real ingest+infer path aborted (rc={r.returncode})\n"
+        f"stdout:\n{r.stdout[-1500:]}\nstderr:\n{r.stderr[-2500:]}")
+    assert "REAL_PATH_OK" in r.stdout
+
+
+def test_reexec_sets_the_variables_even_when_stripped():
+    """os.environ from Python is too late for some libraries; the re-exec is
+    the only reliable form."""
+    r = _run("from nowcast_data._threads import ensure_pinned_or_reexec\n"
+             "ensure_pinned_or_reexec()\n"
+             "import os\n"
+             "print(os.environ.get('KMP_DUPLICATE_LIB_OK'), "
+             "os.environ.get('_NOWCAST_THREADS_PINNED'))")
+    assert r.returncode == 0, r.stderr[-1500:]
+    assert r.stdout.split() == ["TRUE", "1"]
+
+
+def test_reexec_does_not_loop():
+    r = _run("from nowcast_data._threads import ensure_pinned_or_reexec\n"
+             "ensure_pinned_or_reexec(); ensure_pinned_or_reexec()\n"
+             "print('no loop')",
+             env_extra={"_NOWCAST_THREADS_PINNED": "1"})
+    assert r.returncode == 0 and "no loop" in r.stdout

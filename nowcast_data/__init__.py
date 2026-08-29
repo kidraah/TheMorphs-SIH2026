@@ -10,8 +10,10 @@ Service entrypoints should still call `pin_threads()` explicitly on their
 first line: the variables are read when OpenMP loads, so importing this
 package *after* torch is too late.
 """
-from ._threads import already_loaded, pin_threads, thread_status
+from ._threads import (already_loaded, ensure_pinned_or_reexec, pin_threads,
+                       thread_status)
 
 pin_threads(warn=False)          # warn=False: import order is the caller's job
 
-__all__ = ["pin_threads", "thread_status", "already_loaded"]
+__all__ = ["pin_threads", "thread_status", "already_loaded",
+           "ensure_pinned_or_reexec"]

@@ -22,6 +22,21 @@ line, before any other project import.
 
 `already_loaded()` reports when it is too late, rather than silently doing
 nothing.
+
+IN-PROCESS PINNING IS BEST-EFFORT AND NOT SUFFICIENT
+----------------------------------------------------
+Measured: setting these from Python via os.environ works for some call
+paths and NOT for others. scripts/probe_latency.py aborts with
+"OMP: Error #15" despite pin_threads() having set KMP_DUPLICATE_LIB_OK,
+and the same script runs clean when the variable is exported in the shell
+first. The test suite passes because it exercises a different resample path
+than the real ingest does -- a test that passes while production aborts,
+which is the exact gap this module was written to close.
+
+So: `ensure_pinned_or_reexec()` is the reliable form. It re-executes the
+interpreter with the variables set when they were absent at startup, which
+is the only way to guarantee OpenMP sees them. Entrypoints should call it
+on their first line.
 """
 from __future__ import annotations
 
@@ -80,3 +95,41 @@ def thread_status() -> dict:
         "already_loaded": already_loaded(),
         "opted_out": bool(os.environ.get("NOWCAST_NO_THREAD_PIN")),
     }
+
+
+def ensure_pinned_or_reexec(argv=None) -> None:
+    """Guarantee the OpenMP variables are set, re-executing if necessary.
+
+    Setting os.environ from Python is too late for some libraries: they read
+    the variables when their runtime loads, and by the time any Python code
+    runs, a linked libomp may already be initialised. The only reliable fix
+    is for the variables to exist before the interpreter starts.
+
+    So if they were missing at startup, set them and re-exec this same
+    command. The re-exec happens once, costs an interpreter restart, and is
+    invisible to the caller.
+
+    Call it on the FIRST line of an entrypoint, before any other import:
+
+        from nowcast_data._threads import ensure_pinned_or_reexec
+        ensure_pinned_or_reexec()
+
+    No-op if NOWCAST_NO_THREAD_PIN is set, or if already re-executed (guarded
+    by a sentinel variable so it cannot loop).
+    """
+    import sys
+
+    if os.environ.get("NOWCAST_NO_THREAD_PIN"):
+        return
+    if os.environ.get("_NOWCAST_THREADS_PINNED"):
+        return
+
+    missing = [k for k in PINNED if k not in os.environ]
+    if not missing:
+        os.environ["_NOWCAST_THREADS_PINNED"] = "1"
+        return
+
+    env = dict(os.environ)
+    env.update(PINNED)
+    env["_NOWCAST_THREADS_PINNED"] = "1"
+    os.execve(sys.executable, [sys.executable] + list(argv or sys.argv), env)

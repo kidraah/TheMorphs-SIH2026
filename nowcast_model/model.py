@@ -42,6 +42,10 @@ class ModelConfig:
     context_frames: int = 2
     grid_size: int = 96
     dropout: float = 0.0
+    # Cross-attention fusion. 0 disables it and the model behaves exactly as
+    # before (early fusion by channel concatenation).
+    context_channels: int = 0       # e.g. 6 for cape/cin/tcwv/shear/conv/mconv
+    context_patch: int = 2          # ERA5 ~25 km -> ~50 km tokens
     head_specs: list = field(default_factory=lambda: list(DEFAULT_HEADS))
 
     def __post_init__(self):
@@ -67,7 +71,9 @@ class MultiTaskNowcaster(nn.Module):
             in_channels=cfg.in_channels, dim=cfg.dim, depth=cfg.depth,
             heads=cfg.heads, patch=cfg.patch,
             max_frames=max(cfg.context_frames, 8),
-            max_tokens=max(max_tokens, 4096), dropout=cfg.dropout)
+            max_tokens=max(max_tokens, 4096), dropout=cfg.dropout,
+            context_channels=cfg.context_channels,
+            context_patch=cfg.context_patch)
 
         self.heads = nn.ModuleDict()
         self.geometries = {}
@@ -82,8 +88,12 @@ class MultiTaskNowcaster(nn.Module):
     def point_heads(self) -> list[str]:
         return [n for n, g in self.geometries.items() if g == "point"]
 
-    def forward(self, x, station_coords=None):
-        feat = self.backbone(x)
+    def forward(self, x, station_coords=None, context=None,
+                need_weights: bool = False):
+        """context: (B, C_ctx, H_ctx, W_ctx) thermodynamic fields at their OWN
+        resolution -- not upsampled to the satellite grid. None falls back to
+        early fusion, i.e. whatever was concatenated into `x`."""
+        feat = self.backbone(x, context=context, need_weights=need_weights)
         out = {}
         for name, head in self.heads.items():
             if self.geometries[name] == "point":
@@ -96,6 +106,13 @@ class MultiTaskNowcaster(nn.Module):
             else:
                 out[name] = head(feat)
         return out
+
+    @property
+    def cross_attention_weights(self):
+        """(layers, B, N_satellite_tokens, M_context_tokens) from the last
+        forward pass with need_weights=True. This IS the XAI product: which
+        thermodynamic context the model consulted, per location."""
+        return getattr(self.backbone, "last_cross_weights", None)
 
     @torch.no_grad()
     def predict_proba(self, x, station_coords=None) -> dict:
