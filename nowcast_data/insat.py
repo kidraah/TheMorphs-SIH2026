@@ -143,7 +143,8 @@ def read_metadata(path) -> dict:
     want = ("Satellite_Name", "Sensor_Id", "Processing_Level", "Product_Type",
             "Software_Version", "HDF_Product_File_Name", "Acquisition_Date",
             "Acquisition_Time_in_GMT", "Sun_Elevation(Degrees)",
-            "Imaging_Mode", "Radiometric_Calibration_Type", "Ground_Station")
+            "Imaging_Mode", "Radiometric_Calibration_Type", "Ground_Station",
+            "Nominal_Central_Point_Coordinates(degrees)_Latitude_Longitude")
     out = {}
     with h5py.File(Path(path), "r") as fh:
         for k in want:
@@ -153,10 +154,37 @@ def read_metadata(path) -> dict:
             if isinstance(v, bytes):
                 v = v.decode(errors="replace")
             elif isinstance(v, np.ndarray):
-                v = (v[0].decode(errors="replace") if v.dtype.kind == "S"
-                     else float(v.flat[0]))
+                if v.dtype.kind == "S":
+                    v = v[0].decode(errors="replace")
+                elif v.size == 1:
+                    v = float(v.flat[0])
+                else:
+                    # Multi-element attributes must NOT be collapsed to their
+                    # first element. Nominal_Central_Point_Coordinates is
+                    # [latitude, longitude]; taking flat[0] returned the
+                    # latitude (0.0) and silently discarded the sub-satellite
+                    # longitude that parallax geometry depends on.
+                    v = [float(x) for x in v.ravel()]
             out[k] = v
     return out
+
+
+def sub_satellite_longitude(meta: dict) -> float | None:
+    """The satellite's sub-point longitude, from the file's own metadata.
+
+    3DR is at 74E and 3DS at 82E, so zenith angle -- and therefore parallax --
+    differs between them for the same ground cell. Read it rather than
+    assuming: mixing two geometries into one parallax regression corrupts the
+    slope, and the slope is the check that tells us the physics is right.
+    """
+    v = meta.get("Nominal_Central_Point_Coordinates(degrees)_Latitude_Longitude")
+    if v is None:
+        return None
+    try:
+        arr = np.asarray(v, dtype=float).ravel()
+        return float(arr[1]) if arr.size >= 2 else None
+    except (TypeError, ValueError):
+        return None
 
 
 def solar_elevation(meta: dict) -> float | None:

@@ -89,6 +89,7 @@ class SceneOffset:
     n_cold: int
     n_wet: int
     mean_tan_zenith: float
+    sub_lon: float = 74.0
 
     @property
     def magnitude_px(self) -> float:
@@ -148,18 +149,28 @@ class GateResult:
 
 def measure_scene(tir_k, rain_mmhr, lat, lon, scene: str = "",
                   tir_cold_k: float = 240.0, rain_mm: float = 0.5,
-                  max_offset: int = 12, grid_km: float = 4.0) -> SceneOffset:
-    """One coincident INSAT/IMERG pair, already on the common grid."""
+                  max_offset: int = 12, grid_km: float = 4.0,
+                  sub_lon: float = 74.0) -> SceneOffset:
+    """One coincident INSAT/IMERG pair, already on the common grid.
+
+    `sub_lon` is the SATELLITE's sub-point longitude and must be passed per
+    scene: INSAT-3DR sits at 74E and 3DS at 82E, so the same ground cell has
+    a different zenith angle depending on which satellite saw it. Defaulting
+    it silently would mix two geometries into one regression and corrupt the
+    parallax slope -- read it from the file's
+    Nominal_Central_Point_Coordinates attribute rather than assuming.
+    """
     r = alignment_offset(tir_k, rain_mmhr, tir_cold_k=tir_cold_k,
                          rain_mm=rain_mm, max_offset=max_offset, grid_km=grid_km)
     cold = np.isfinite(tir_k) & (np.asarray(tir_k) <= tir_cold_k)
     wet = np.isfinite(rain_mmhr) & (np.asarray(rain_mmhr) >= rain_mm)
-    tz = np.tan(np.deg2rad(satellite_zenith(lat, lon)))
+    tz = np.tan(np.deg2rad(satellite_zenith(lat, lon, sub_lon=sub_lon)))
     return SceneOffset(scene=scene or "scene", dy=r.dy, dx=r.dx,
                        peak=r.peak_score, zero=r.zero_score,
                        n_cold=int(cold.sum()), n_wet=int(wet.sum()),
                        mean_tan_zenith=float(np.nanmean(np.where(cold, tz, np.nan)))
-                       if cold.any() else float("nan"))
+                       if cold.any() else float("nan"),
+                       sub_lon=float(sub_lon))
 
 
 def run_gate(scenes: list, grid_km: float = 4.0) -> GateResult:

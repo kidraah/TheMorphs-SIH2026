@@ -67,6 +67,13 @@ def read_precipitation(path) -> ImergScan:
         raise FileNotFoundError(f"no IMERG file at {p}")
 
     with h5py.File(p, "r") as fh:
+        # Prefer the file's OWN coordinate arrays over computed ones. They
+        # agree exactly here, but computing them bakes in an assumption about
+        # grid origin and cell registration that a future product version
+        # could change silently -- and a half-cell longitude error is a ~5 km
+        # uniform shift, indistinguishable from a georeferencing bug.
+        file_lats = np.asarray(fh["Grid/lat"][:], dtype=np.float64) if "Grid/lat" in fh else None
+        file_lons = np.asarray(fh["Grid/lon"][:], dtype=np.float64) if "Grid/lon" in fh else None
         var = next((v for v in PRECIP_VARIANTS if v in fh), None)
         if var is None:
             grid = list(fh["Grid"].keys()) if "Grid" in fh else list(fh.keys())
@@ -86,6 +93,20 @@ def read_precipitation(path) -> ImergScan:
     arr = arr.T                                    # -> (lat, lon)
     arr[arr <= FILL_VALUE + 1e-3] = np.nan
     lats, lons = _grid_coords()
+    if file_lats is not None and file_lons is not None:
+        if file_lats.size != lats.size or file_lons.size != lons.size:
+            raise ValueError(
+                f"file grid {file_lons.size}x{file_lats.size} does not match the "
+                f"expected 0.1deg global grid {lons.size}x{lats.size}")
+        drift = max(float(np.max(np.abs(file_lats - lats))),
+                    float(np.max(np.abs(file_lons - lons))))
+        if drift > 0.01:
+            raise ValueError(
+                f"file coordinates differ from the assumed 0.1deg grid by "
+                f"{drift:.4f} deg (~{drift * 111:.1f} km). Using the computed grid "
+                f"would apply a uniform shift indistinguishable from a "
+                f"georeferencing error.")
+        lats, lons = file_lats, file_lons
     return ImergScan(rate_mmhr=arr, lats=lats, lons=lons, variable=var, path=str(p))
 
 
