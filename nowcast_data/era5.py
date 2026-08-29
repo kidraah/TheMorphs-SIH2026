@@ -60,6 +60,34 @@ MULTI_LEVEL = ("u_component_of_wind", "v_component_of_wind",
 SHEAR_LEVELS = (850, 500)      # hPa: low-level flow vs mid-level steering
 CONVERGENCE_LEVEL = 850        # hPa: where low-level convergence is diagnosed
 
+# ---------------------------------------------------------------------------
+# VERIFIED CONVENTIONS -- checked against ERA5's own attributes AND against
+# known monsoon physics on 2023-07-09T12:00. Recorded because assuming a
+# convention is how CIN's sign was got wrong, and five separate silent-decode
+# bugs on this project say assumptions do not survive contact with data.
+#
+#   latitude    NORTH to SOUTH (90 -> -90). Slices must be reversed:
+#               sel(latitude=slice(north, south)).
+#   longitude   0 .. 359.75, NOT -180..180. Harmless for India (60-104E is
+#               identical in both) and a trap for anyone extending west:
+#               a slice(-20, 10) would return EMPTY, not an error.
+#   level       TOP-DOWN in hPa: level[0] = 1 (top), level[-1] = 1000.
+#               Verified: T = 263.6 K at 1 hPa vs 305.6 K at 1000 hPa.
+#   u wind      EASTWARD-positive. Verified: +16.75 m/s at 850 hPa over the
+#               Arabian Sea in July -- the Somali jet, textbook.
+#   v wind      NORTHWARD-positive (+3.53 m/s, same scene).
+#   vapour flux EASTWARD/NORTHWARD-positive, kg m^-1 s^-1. Verified:
+#               +492 kg/m/s eastward over the Arabian Sea, i.e. moisture
+#               transported toward India. A sign error here would invert
+#               moisture convergence -- storms where the air is drying.
+#   TCWV        kg m^-2, numerically equal to mm of precipitable water.
+#               Verified: 60.9 mm median over monsoon India.
+#   CAPE        J kg^-1, positive.
+#   CIN         J kg^-1, POSITIVE MAGNITUDE (not signed), and NaN where no
+#               convective parcel exists. See CIN_UNDEFINED_MEANS_NO_PARCEL.
+# ---------------------------------------------------------------------------
+LONGITUDE_CONVENTION = "0-360"
+
 EARTH_RADIUS_M = 6_371_000.0
 
 # Physically plausible ranges, for the same reason INSAT has them: a wrong
@@ -87,9 +115,29 @@ def _subset(ds, time, box=None, levels=None):
     box = box or INDIA_BOX
     lat0, lat1 = box["lat"]
     lon0, lon1 = box["lon"]
-    # ERA5 latitude runs north -> south, so the slice is reversed.
+
+    # ERA5 longitude is 0..360. A negative bound silently returns an EMPTY
+    # selection rather than raising, so it is caught here instead of surfacing
+    # later as an unexplained all-NaN field.
+    if lon0 < 0 or lon1 < 0:
+        raise ValueError(
+            f"ERA5 longitude is {LONGITUDE_CONVENTION}, got ({lon0}, {lon1}). "
+            f"A negative bound selects nothing without erroring. Convert with "
+            f"lon % 360 -- and note a box spanning the prime meridian needs two "
+            f"slices, not one.")
+    if lon1 < lon0:
+        raise ValueError(
+            f"longitude bounds ({lon0}, {lon1}) are reversed or wrap the "
+            f"0/360 seam; a single slice cannot express that.")
+
+    # latitude runs north -> south, so the slice is reversed.
     sel = ds.sel(time=time, latitude=slice(lat1, lat0), longitude=slice(lon0, lon1))
+    if sel.sizes.get("latitude", 0) == 0 or sel.sizes.get("longitude", 0) == 0:
+        raise ValueError(f"empty selection for box {box} -- check the "
+                         f"latitude ordering (north first) and 0-360 longitude")
     if levels is not None:
+        # .sel with a list preserves the REQUESTED order, not the store's
+        # top-down order. Verified; the code below depends on it.
         sel = sel.sel(level=list(levels))
     return sel
 
@@ -156,10 +204,16 @@ def load_fields(time, box=None, url: str = ARCO_URL, ds=None) -> ERA5Fields:
 
     ml = _subset(ds[["u_component_of_wind", "v_component_of_wind"]], time, box,
                  levels=SHEAR_LEVELS)
-    u = np.asarray(ml["u_component_of_wind"].values)
-    v = np.asarray(ml["v_component_of_wind"].values)
-    lo, hi = list(SHEAR_LEVELS).index(SHEAR_LEVELS[0]), list(SHEAR_LEVELS).index(SHEAR_LEVELS[1])
-    out["shear"] = np.hypot(u[hi] - u[lo], v[hi] - v[lo])
+    # Select by LEVEL VALUE rather than by array position: index arithmetic
+    # here depends on xarray preserving the requested order, which is true but
+    # is exactly the kind of assumption this file exists to stop making.
+    lower, upper = SHEAR_LEVELS
+    u_lo = np.asarray(ml["u_component_of_wind"].sel(level=lower).values)
+    v_lo = np.asarray(ml["v_component_of_wind"].sel(level=lower).values)
+    u_hi = np.asarray(ml["u_component_of_wind"].sel(level=upper).values)
+    v_hi = np.asarray(ml["v_component_of_wind"].sel(level=upper).values)
+    # magnitude of the vector difference, so the sign convention cannot bite
+    out["shear"] = np.hypot(u_hi - u_lo, v_hi - v_lo)
 
     conv = _subset(ds[["u_component_of_wind", "v_component_of_wind"]], time, box,
                    levels=(CONVERGENCE_LEVEL,))

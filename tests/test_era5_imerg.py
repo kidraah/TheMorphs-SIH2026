@@ -202,3 +202,45 @@ def test_accumulator_ignores_nan_cells():
     thr = acc.finalise().threshold_for(8)
     assert np.isnan(thr[0, 0]), "a cell with no valid samples has no threshold"
     assert np.isfinite(thr[1, 1])
+
+
+# --------------------------------------------------------------------------
+# ERA5 verified conventions -- regression guards
+# --------------------------------------------------------------------------
+
+def test_negative_longitude_is_rejected_not_silently_empty():
+    """ERA5 longitude is 0-360. A negative bound returns an EMPTY selection
+    rather than raising, which would surface much later as an unexplained
+    all-NaN field."""
+    with pytest.raises(ValueError, match="0-360"):
+        era5._subset(None, "t", box={"lat": (3, 42), "lon": (-20, 10)})
+
+
+def test_reversed_longitude_bounds_are_rejected():
+    with pytest.raises(ValueError, match="reversed or wrap"):
+        era5._subset(None, "t", box={"lat": (3, 42), "lon": (100, 60)})
+
+
+@network
+def test_verified_conventions_still_hold():
+    """Pins every convention checked against ERA5 docs AND monsoon physics.
+    If ARCO ever changes one of these, this fails instead of the model
+    silently learning inverted moisture transport."""
+    ds = era5.open_store()
+    assert ds.latitude.values[0] > ds.latitude.values[-1], "latitude north-first"
+    assert ds.longitude.values.max() > 180, "longitude 0-360"
+    assert ds.level.values[0] < ds.level.values[-1], "level top-down"
+    assert ds["total_column_water_vapour"].attrs["units"] == "kg m**-2"
+    assert ds["convective_inhibition"].attrs["units"] == "J kg**-1"
+
+    # the Somali jet: strong low-level westerlies over the Arabian Sea in July
+    sl = ds[["u_component_of_wind"]].sel(
+        time="2023-07-09T12:00", level=850,
+        latitude=slice(15, 10), longitude=slice(55, 70))
+    assert float(np.asarray(sl.u_component_of_wind.values).mean()) > 5.0, \
+        "u must be eastward-positive"
+
+    # moisture must be transported TOWARD India, i.e. eastward-positive
+    fl = ds["vertical_integral_of_eastward_water_vapour_flux"].sel(
+        time="2023-07-09T12:00", latitude=slice(15, 10), longitude=slice(55, 70))
+    assert float(np.asarray(fl.values).mean()) > 0, "vapour flux eastward-positive"

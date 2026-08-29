@@ -668,3 +668,78 @@ def test_disk_median_solar_elevation_would_be_wrong():
     reads -17.26. Sampling must be over the AOI, not the disk."""
     aoi = insat.solar_elevation_from_dataset(REAL_3DR, aoi_lat=23.0, aoi_lon=82.0)
     assert aoi is not None and aoi < 0, f"India pre-dawn should be negative, got {aoi}"
+
+
+# --------------------------------------------------------------------------
+# Alignment gate
+# --------------------------------------------------------------------------
+
+from nowcast_data import alignment_gate as ag
+
+
+def _synth_scenes(const_dy=0, const_dx=0, parallax=True, n=8, cold=5000, wet=4000,
+                  peak=0.42, zero=0.28, seed=0):
+    rng = np.random.default_rng(seed)
+    out = []
+    for i in range(n):
+        lat = 10 + 3 * i
+        tz = float(np.tan(np.deg2rad(ag.satellite_zenith(lat, 78.0))))
+        dy = const_dy + (12.0 * tz / 4.0 if parallax else 0.0)
+        out.append(ag.SceneOffset(f"s{i}", int(round(dy)), int(round(const_dx)),
+                                  peak=peak, zero=zero, n_cold=cold, n_wet=wet,
+                                  mean_tan_zenith=tz))
+    return out
+
+
+def test_parallax_alone_does_not_fail_the_gate():
+    """A naive one-pixel gate would FAIL correct data: a 12 km cloud top is
+    displaced 2.5 px at Kashmir by viewing geometry alone."""
+    r = ag.run_gate(_synth_scenes())
+    assert r.verdict == "PASS", r.report()
+    assert abs(r.parallax_slope_km - 12.0) < 5.0, "parallax slope should be recovered"
+
+
+def test_constant_offset_fails_and_is_named_as_georeferencing():
+    r = ag.run_gate(_synth_scenes(const_dy=5))
+    assert r.verdict == "FAIL"
+    assert any("georeferencing error" in x for x in r.reasons)
+    assert "DO NOT BUILD TRAINING DATA" in r.report()
+
+
+def test_parallax_magnitude_matches_geometry():
+    """Displacement must grow with satellite zenith angle, i.e. with distance
+    from the sub-satellite point."""
+    south = ag.expected_parallax_km(8.1, 77.5)
+    north = ag.expected_parallax_km(34.2, 75.5)
+    assert north > 3 * south
+    assert 8.0 < north < 13.0, f"Kashmir 12 km top should shift ~10 km, got {north}"
+
+
+def test_too_few_scenes_is_inconclusive_not_pass():
+    r = ag.run_gate(_synth_scenes(n=2))
+    assert r.verdict == "INCONCLUSIVE"
+    assert "cannot separate a registration offset from storm motion" in r.reasons[0]
+
+
+def test_flat_peak_is_inconclusive_not_pass():
+    """No convection means no alignment signal. That must not read as PASS."""
+    r = ag.run_gate(_synth_scenes(peak=0.28, zero=0.28))
+    assert r.verdict == "INCONCLUSIVE"
+    assert "no convection to align" in r.reasons[0]
+
+
+def test_thin_evidence_scenes_are_excluded():
+    r = ag.run_gate(_synth_scenes(cold=10, wet=10))
+    assert r.verdict == "INCONCLUSIVE"
+
+
+def test_inconsistent_offsets_fail_even_if_the_median_is_small():
+    """A registration error is consistent. Large scatter means storm motion is
+    being measured, and a small median would otherwise hide it."""
+    s = _synth_scenes(parallax=False)
+    for i, sc in enumerate(s):
+        sc.dy = 8 if i % 2 else -8
+        sc.mean_tan_zenith = 0.3
+    r = ag.run_gate(s)
+    assert r.verdict == "FAIL"
+    assert any("scatter" in x or "spread" in x for x in r.reasons)

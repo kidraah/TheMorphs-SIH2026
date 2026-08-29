@@ -121,7 +121,9 @@ moment anyone extends past 3DR. To settle it: many coincident pairs,
 preferably clear-sky scenes where cloud-top evolution cannot confound, plus a
 direct comparison of the two LUTs at the cold end.
 
-## 5. Sentinel values decoded as physical extremes — three found, assume more
+## 5. Sentinel values decoded as physical extremes — FIVE found, assume a sixth
+
+**Promoted to a standing rule: see [DATA_TRUST_RULE.md](DATA_TRUST_RULE.md).**
 
 Three times on this project a fill or clamp value has decoded to a
 plausible-looking physical **extreme** rather than raising:
@@ -132,6 +134,7 @@ plausible-looking physical **extreme** rather than raising:
 | SEVIR / INSAT IR | int16 min | −327.68 °C — coldest possible cloud top | 7% |
 | INSAT L1B | count→K LUT clamp | 180.09 K in **two** channels with different physics | 0.33% |
 | INSAT-3DS | `Sun_Elevation` attr | `7.68e-76` → reads as "0 degrees" | scalar |
+| ERA5 | CIN `NaN` | "no inhibition" if filled with 0 — **sign-inverted** | ~40% |
 
 The fourth is the same pattern in metadata rather than pixels: denormal-small
 rather than out of range, so `float()` accepts it. It gated a night scan
