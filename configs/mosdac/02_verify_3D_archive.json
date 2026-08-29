@@ -1,0 +1,23 @@
+{
+  "_note": "Format check on the INSAT-3D ARCHIVE. In-Active since 2024-06-18 but still the only source before 2016-10-11. We hold a 2019 3DIMG file that already passes, so this mainly confirms archive retrieval works.",
+  "_unblocks": "The Chennai 2015 hindcast case.",
+  "user_credentials": {
+    "username": "",
+    "password": ""
+  },
+  "search_parameters": {
+    "datasetId": "3DIMG_L1B_STD",
+    "startTime": "2015-12-01",
+    "endTime": "2015-12-01",
+    "count": 1,
+    "boundingBox": "",
+    "gId": ""
+  },
+  "download_settings": {
+    "download_path": "data/insat",
+    "organize_by_date": true,
+    "skip_user_prompt": false,
+    "generate_error_log": true,
+    "error_log_path": "data/insat/logs"
+  }
+}

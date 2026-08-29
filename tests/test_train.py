@@ -283,3 +283,51 @@ def test_resume_continues_from_the_saved_epoch(loader, tmp_path):
 
     train(mk(), tr, va, cfg(2), lead_minutes=[30, 60, 90, 120], resume=True)
     assert load_checkpoint(tmp_path / "r" / "last.pt", model=mk())["epoch"] == 1
+
+
+# --------------------------------------------------------------------------
+# FAR-constrained operating points
+# --------------------------------------------------------------------------
+
+def test_far_constraint_actually_binds():
+    """SEDI's false-alarm term is the RATE b/(b+d), which stays tiny when
+    negatives dominate -- so an unconstrained optimum buys recall at almost
+    any price in precision. On the real run that produced FAR 0.997."""
+    from nowcast_train import select_threshold, select_threshold_far_constrained
+    rng = np.random.default_rng(0)
+    t = (rng.random(80_000) < 4e-4).astype(float)
+    p = np.where(t > 0, rng.uniform(0.05, 0.35, t.shape),
+                 rng.uniform(0.0, 0.25, t.shape))
+
+    thr_u, _ = select_threshold(p, t, "sedi")
+    from nowcast_eval import contingency
+    far_u = contingency(p, t, thr_u).far
+
+    thr_c, _, far_c = select_threshold_far_constrained(p, t, max_far=0.80)
+    assert far_u > 0.9, f"fixture must reproduce the unconstrained problem, got {far_u}"
+    assert far_c <= 0.80, f"constraint must bind, got {far_c}"
+    assert thr_c >= thr_u, "the constrained point must be at least as strict"
+
+
+def test_infeasible_constraint_reports_honestly():
+    """If nothing meets the ceiling, return the least-bad point and say so
+    rather than pretending a feasible operating point exists."""
+    from nowcast_train import select_threshold_far_constrained
+    rng = np.random.default_rng(1)
+    t = (rng.random(40_000) < 1e-3).astype(float)
+    p = rng.uniform(0.0, 1.0, t.shape)          # no skill at all
+    thr, score, far = select_threshold_far_constrained(p, t, max_far=0.05)
+    assert far > 0.05, "an impossible constraint must not silently appear met"
+    assert np.isfinite(thr)
+
+
+def test_operating_points_reports_both_side_by_side():
+    from nowcast_train import operating_points
+    rng = np.random.default_rng(2)
+    t = (rng.random(60_000) < 5e-4).astype(float)
+    p = np.where(t > 0, rng.uniform(0.05, 0.4, t.shape),
+                 rng.uniform(0.0, 0.28, t.shape))
+    op = operating_points({"h": p}, {"h": t}, max_far=0.8)["h"]
+    assert set(op) == {"unconstrained", "far_constrained", "max_far"}
+    assert op["far_constrained"]["far"] <= op["unconstrained"]["far"]
+    assert "feasible" in op["far_constrained"]

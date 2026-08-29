@@ -7,21 +7,17 @@ rather than iterated on.
 **Sizes are estimates** except where marked measured. **Disk: ~271 GB free** —
 which is the binding constraint on items P5 and P6, see the note there.
 
-**CORRECTION — the API parameters are not what this manifest first said.**
-Per the [MOSDAC API manual](https://mosdac.gov.in/downloadapi-manual):
+**The 2026 parameter error is explained.** Catalog-verified on 2026-08-29:
+`3DIMG_L1B_STD` (INSAT-3D) covers 2013-10-01 → **2024-06-18** and is marked
+**In-Active**. The dataset id is valid; the *date range* is outside its
+coverage. Use `3RIMG_L1B_STD` (INSAT-3DR, 2016-10-11 → present) or
+`3SIMG_L1B_STD` (INSAT-3DS, 2024-05-17 → present). Note the prefixes:
+`3RIMG_`, not `3DRIMG_`.
 
-| | correct | this manifest originally said |
-|---|---|---|
-| date format | `YYYY-MM-DD` (e.g. `2024-09-25`) | `DDMMMYYYY` — that is the FILENAME convention, not the API's |
-| parameters | `startTime` / `endTime` | `fromDate` / `toDate` |
-| bounding box | `minLon,minLat,maxLon,maxLat` — **longitude first** | lat first — would have returned the wrong region |
-| count | ceiling of **100** per request | "empty for unlimited" |
-
-Any of the first three is a plausible cause of the 2026 parameter error.
-The `datasetId` is the other candidate: `3SIMG_L1B_STD` (INSAT-3DS,
-operational Feb 2024) is the manual's own worked example, so it is the
-strongest guess for recent dates. Catalog browser:
-https://mosdac.gov.in/catalog/satellite.php
+Config shape is the user's verified-working 2023 config, confirmed against
+the API manual: `startTime`/`endTime` as `YYYY-MM-DD`, `boundingBox` as
+`minLon,minLat,maxLon,maxLat` (longitude first). Ready-to-run configs are in
+[`configs/mosdac/`](../configs/mosdac/) with their own README.
 
 Times are UTC; IST = UTC + 5:30.
 

@@ -3,7 +3,8 @@ from .checkpoint import find_latest, load_checkpoint, save_checkpoint
 from .cache import (CachedEvents, CacheConfig, CacheMismatch, build_cache,
                     read_manifest, verify_manifest)
 from .calibration import (IsotonicCalibrator, apply_calibrators, fit_calibrators,
-                          select_threshold, select_thresholds)
+                          operating_points, select_threshold,
+                          select_threshold_far_constrained, select_thresholds)
 from .dataset import (CachedSEVIRDataset, ChannelStats, DatasetConfig, NaNPolicy,
                       SEVIRDataset, TargetConfig, collate, compute_channel_stats)
 from .loop import TrainConfig, head_eval_configs, run_validation, train
@@ -16,7 +17,8 @@ __all__ = [
     "CachedEvents", "CacheConfig", "CacheMismatch", "build_cache",
     "read_manifest", "verify_manifest",
     "IsotonicCalibrator", "fit_calibrators", "apply_calibrators",
-    "select_threshold", "select_thresholds",
+    "select_threshold", "select_thresholds", "select_threshold_far_constrained",
+    "operating_points",
     "ChannelStats", "compute_channel_stats", "collate",
     "save_checkpoint", "load_checkpoint", "find_latest",
     "train", "TrainConfig", "run_validation", "head_eval_configs",

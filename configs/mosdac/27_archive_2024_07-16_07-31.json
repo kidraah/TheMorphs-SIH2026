@@ -1,0 +1,23 @@
+{
+  "_note": "Monsoon training archive, 2024 07-16..07-31. 3RIMG spans 2016-10-11 to present, so it covers all three seasons with ONE satellite -- avoiding a sensor discontinuity mid-training.",
+  "_unblocks": "Indian fine-tuning set. Only after the hindcast path works.",
+  "user_credentials": {
+    "username": "",
+    "password": ""
+  },
+  "search_parameters": {
+    "datasetId": "3RIMG_L1B_STD",
+    "startTime": "2024-07-16",
+    "endTime": "2024-07-31",
+    "count": "",
+    "boundingBox": "62.3,5.8,101.7,39.5",
+    "gId": ""
+  },
+  "download_settings": {
+    "download_path": "data/insat",
+    "organize_by_date": true,
+    "skip_user_prompt": false,
+    "generate_error_log": true,
+    "error_log_path": "data/insat/logs"
+  }
+}

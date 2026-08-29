@@ -64,9 +64,91 @@ def select_threshold(probs: np.ndarray, targets: np.ndarray,
     return best, best_score
 
 
-def select_thresholds(probs: dict, targets: dict, metric: str = "sedi") -> dict:
-    """Per-head operating points. One threshold cannot serve all heads."""
-    return {k: select_threshold(probs[k], targets[k], metric)[0] for k in probs}
+def select_threshold_far_constrained(
+    probs: np.ndarray, targets: np.ndarray, max_far: float = 0.80,
+    metric: str = "sedi", candidates: np.ndarray | None = None,
+    mask: np.ndarray | None = None) -> tuple[float, float, float]:
+    """Maximise `metric` SUBJECT TO false-alarm ratio <= max_far.
+
+    Why this exists
+    ---------------
+    Selecting on SEDI alone produced FAR = 0.997 on the rare heads -- 997
+    false alarms per 1000 warnings, operationally unusable. That is not a
+    failure of SEDI, it is what SEDI measures: its false-alarm term is the
+    RATE b/(b+d), which stays tiny when negatives dominate, so at a 4e-4 base
+    rate an unconstrained optimum buys recall at essentially any price in
+    precision.
+
+    A warning system has a precision budget set by what its users will
+    tolerate before they stop acting on alerts. That budget belongs in the
+    objective, not in a footnote.
+
+    Returns (threshold, metric_score, far). If NO candidate satisfies the
+    constraint the threshold is the one with the lowest FAR, and the returned
+    FAR will exceed max_far -- report that honestly rather than pretending a
+    feasible point exists.
+    """
+    p = np.asarray(probs, dtype=np.float64).ravel()
+    t = np.asarray(targets, dtype=np.float64).ravel()
+    if mask is not None:
+        m = np.asarray(mask, dtype=bool).ravel()
+        p, t = p[m], t[m]
+    if candidates is None:
+        qs = np.concatenate([np.linspace(50.0, 99.0, 30),
+                             np.linspace(99.0, 99.999, 30)])
+        candidates = np.unique(np.percentile(p, qs))
+
+    feasible, all_pts = [], []
+    for thr in candidates:
+        c = contingency(p, t, float(thr))
+        s = getattr(c, metric)
+        far = c.far
+        if not np.isfinite(far):
+            continue
+        all_pts.append((float(thr), float(s) if np.isfinite(s) else -np.inf, float(far)))
+        if far <= max_far and np.isfinite(s):
+            feasible.append((float(thr), float(s), float(far)))
+
+    if feasible:
+        return max(feasible, key=lambda r: r[1])
+    if all_pts:
+        return min(all_pts, key=lambda r: r[2])       # least-bad FAR
+    return (float("nan"), float("nan"), float("nan"))
+
+
+def select_thresholds(probs: dict, targets: dict, metric: str = "sedi",
+                      max_far: float | None = None) -> dict:
+    """Per-head operating points. One threshold cannot serve all heads.
+
+    `max_far` switches to the FAR-constrained objective. Report both: the
+    unconstrained point shows the model's discrimination ceiling, the
+    constrained point shows what is deployable, and only the pair is honest.
+    """
+    if max_far is None:
+        return {k: select_threshold(probs[k], targets[k], metric)[0] for k in probs}
+    return {k: select_threshold_far_constrained(probs[k], targets[k], max_far,
+                                                metric)[0] for k in probs}
+
+
+def operating_points(probs: dict, targets: dict, metric: str = "sedi",
+                     max_far: float = 0.80) -> dict:
+    """Both operating points per head, for side-by-side reporting."""
+    out = {}
+    for k in probs:
+        thr_u, s_u = select_threshold(probs[k], targets[k], metric)
+        c_u = contingency(probs[k].ravel(), targets[k].ravel(), thr_u)
+        thr_c, s_c, far_c = select_threshold_far_constrained(
+            probs[k], targets[k], max_far, metric)
+        c_c = contingency(probs[k].ravel(), targets[k].ravel(), thr_c)
+        out[k] = {
+            "unconstrained": {"threshold": thr_u, metric: s_u, "far": c_u.far,
+                              "pod": c_u.pod, "csi": c_u.csi},
+            "far_constrained": {"threshold": thr_c, metric: s_c, "far": far_c,
+                                "pod": c_c.pod, "csi": c_c.csi,
+                                "feasible": bool(far_c <= max_far)},
+            "max_far": max_far,
+        }
+    return out
 
 
 # --------------------------------------------------------------------------

@@ -1,0 +1,23 @@
+{
+  "_note": "Hindcast event window: hyderabad-urban.",
+  "_unblocks": "Indian hindcast validation -- the cases judges ask about by name.",
+  "user_credentials": {
+    "username": "",
+    "password": ""
+  },
+  "search_parameters": {
+    "datasetId": "3RIMG_L1B_STD",
+    "startTime": "2020-10-13",
+    "endTime": "2020-10-14",
+    "count": "",
+    "boundingBox": "62.3,5.8,101.7,39.5",
+    "gId": ""
+  },
+  "download_settings": {
+    "download_path": "data/insat",
+    "organize_by_date": true,
+    "skip_user_prompt": false,
+    "generate_error_log": true,
+    "error_log_path": "data/insat/logs"
+  }
+}
