@@ -1,5 +1,5 @@
 import React from 'react';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, AlertTriangle, ShieldCheck } from 'lucide-react';
 import { useCountdown } from '../hooks/useCountdown';
 import { formatTime } from '../utils/formatters';
 import { useAppStore } from '../store/useAppStore';
@@ -23,7 +23,7 @@ const getRiskColor = (level) => {
   }
 };
 
-export const RiskCards = () => {
+export const RiskCards = ({ layout = 'vertical' }) => {
   const { selectedTimeRange, selectedDistrict, resetFilters } = useAppStore();
   const { secondsLeft, reset, isRefreshing } = useCountdown(930);
 
@@ -62,16 +62,20 @@ export const RiskCards = () => {
     };
   }
 
+  const containerClass = layout === 'horizontal'
+    ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5'
+    : 'flex flex-col gap-2 sm:gap-2.5 h-full justify-between';
+
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-      {/* 1. Overall Risk Level */}
-      <div className="bg-white border border-slate-200 rounded p-3 shadow-sm flex items-center justify-between">
+    <div className={containerClass}>
+      {/* 1. OVERALL RISK LEVEL */}
+      <div className="bg-white border border-[#E2E2E2] rounded px-3 py-2 sm:py-2.5 shadow-gov-sm flex items-center justify-between flex-1 min-h-[80px]">
         <div className="min-w-0">
-          <span className="text-[10.5px] font-bold text-slate-500 uppercase tracking-wide block mb-0.5">
+          <span className="text-[10px] sm:text-[10.5px] font-bold text-slate-500 uppercase tracking-wide block mb-0.5">
             {isDistrictInspected ? 'District Risk Level' : 'Overall Risk Level'}
           </span>
           <span
-            className="text-[22px] font-extrabold leading-none block"
+            className="text-[18px] sm:text-[21px] font-extrabold leading-tight block"
             style={{ color: getRiskColor(displayData.overallRisk.level) }}
           >
             {displayData.overallRisk.level}
@@ -79,85 +83,85 @@ export const RiskCards = () => {
           {isDistrictInspected ? (
             <button
               onClick={resetFilters}
-              className="text-[9.5px] text-[#C85D00] font-bold hover:underline block mt-1 uppercase"
+              className="text-[9.5px] text-[#C85D00] font-bold hover:underline block mt-0.5 uppercase"
             >
               Clear: {displayData.overallRisk.affectedDistricts}
             </button>
           ) : (
-            <span className="text-[10.5px] text-slate-500 font-medium block mt-0.5">
+            <span className="text-[10px] sm:text-[10.5px] text-slate-500 font-medium block mt-0.5">
               Across {displayData.overallRisk.affectedDistricts} Districts
             </span>
           )}
         </div>
       </div>
 
-      {/* 2. Thunderstorm Risk */}
-      <div className="bg-white border border-slate-200 rounded p-3 shadow-sm flex items-center justify-between">
+      {/* 2. THUNDERSTORM RISK */}
+      <div className="bg-white border border-[#E2E2E2] rounded px-3 py-2 sm:py-2.5 shadow-gov-sm flex items-center justify-between flex-1 min-h-[80px]">
         <div className="min-w-0">
-          <span className="text-[10.5px] font-bold text-slate-500 uppercase tracking-wide block mb-0.5">
+          <span className="text-[10px] sm:text-[10.5px] font-bold text-slate-500 uppercase tracking-wide block mb-0.5">
             Thunderstorm Risk
           </span>
           <span
-            className="text-[22px] font-extrabold leading-none block"
+            className="text-[18px] sm:text-[21px] font-extrabold leading-tight block"
             style={{ color: getRiskColor(displayData.thunderstormRisk.level) }}
           >
             {displayData.thunderstormRisk.level}
           </span>
-          <span className="text-[10.5px] text-slate-500 font-medium block mt-0.5">
+          <span className="text-[10px] sm:text-[10.5px] text-slate-500 font-medium block mt-0.5">
             Probability {displayData.thunderstormRisk.probability}%
           </span>
         </div>
       </div>
 
-      {/* 3. Cloudburst Risk */}
-      <div className="bg-white border border-slate-200 rounded p-3 shadow-sm flex items-center justify-between">
+      {/* 3. CLOUDBURST RISK */}
+      <div className="bg-white border border-[#E2E2E2] rounded px-3 py-2 sm:py-2.5 shadow-gov-sm flex items-center justify-between flex-1 min-h-[80px]">
         <div className="min-w-0">
-          <span className="text-[10.5px] font-bold text-slate-500 uppercase tracking-wide block mb-0.5">
+          <span className="text-[10px] sm:text-[10.5px] font-bold text-slate-500 uppercase tracking-wide block mb-0.5">
             Cloudburst Risk
           </span>
           <span
-            className="text-[22px] font-extrabold leading-none block"
+            className="text-[18px] sm:text-[21px] font-extrabold leading-tight block"
             style={{ color: getRiskColor(displayData.cloudburstRisk.level) }}
           >
             {displayData.cloudburstRisk.level}
           </span>
-          <span className="text-[10.5px] text-slate-500 font-medium block mt-0.5">
+          <span className="text-[10px] sm:text-[10.5px] text-slate-500 font-medium block mt-0.5">
             Probability {displayData.cloudburstRisk.probability}%
           </span>
         </div>
       </div>
 
-      {/* 4. Flash Flood Risk */}
-      <div className="bg-white border border-slate-200 rounded p-3 shadow-sm flex items-center justify-between">
+      {/* 4. FLASH FLOOD RISK */}
+      <div className="bg-white border border-[#E2E2E2] rounded px-3 py-2 sm:py-2.5 shadow-gov-sm flex items-center justify-between flex-1 min-h-[80px]">
         <div className="min-w-0">
-          <span className="text-[10.5px] font-bold text-slate-500 uppercase tracking-wide block mb-0.5">
+          <span className="text-[10px] sm:text-[10.5px] font-bold text-slate-500 uppercase tracking-wide block mb-0.5">
             Flash Flood Risk
           </span>
           <span
-            className="text-[22px] font-extrabold leading-none block"
+            className="text-[18px] sm:text-[21px] font-extrabold leading-tight block"
             style={{ color: getRiskColor(displayData.flashFloodRisk.level) }}
           >
             {displayData.flashFloodRisk.level}
           </span>
-          <span className="text-[10.5px] text-slate-500 font-medium block mt-0.5">
+          <span className="text-[10px] sm:text-[10.5px] text-slate-500 font-medium block mt-0.5">
             Probability {displayData.flashFloodRisk.probability}%
           </span>
         </div>
       </div>
 
-      {/* 5. Next Update In (Countdown Timer) */}
-      <div className="bg-white border border-slate-200 rounded p-3 shadow-sm flex items-center justify-between">
+      {/* 5. NEXT UPDATE IN */}
+      <div className="bg-white border border-[#E2E2E2] rounded px-3 py-2 sm:py-2.5 shadow-gov-sm flex items-center justify-between flex-1 min-h-[80px]">
         <div className="min-w-0">
-          <span className="text-[10.5px] font-bold text-slate-500 uppercase tracking-wide block mb-0.5">
-            Next Update In
+          <span className="text-[10px] sm:text-[10.5px] font-bold text-slate-500 uppercase tracking-wide block mb-0.5">
+            Next Update
           </span>
           <span
-            className="font-mono font-extrabold text-emerald-600 leading-none block"
-            style={{ fontSize: '20px', letterSpacing: '0.04em' }}
+            className="font-mono font-extrabold text-emerald-600 leading-tight block"
+            style={{ fontSize: '18px', letterSpacing: '0.04em' }}
           >
             {formatTime(secondsLeft)}
           </span>
-          <span className="text-[10.5px] text-slate-500 font-medium block mt-0.5">
+          <span className="text-[10px] sm:text-[10.5px] text-slate-500 font-medium block mt-0.5">
             Stay Tuned
           </span>
         </div>
@@ -165,9 +169,9 @@ export const RiskCards = () => {
           type="button"
           onClick={reset}
           title="Refresh Nowcast"
-          className="w-10 h-10 rounded-full border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 flex items-center justify-center text-emerald-700 transition-colors shrink-0 ml-2"
+          className="w-8 h-8 rounded-full border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 flex items-center justify-center text-emerald-700 transition-colors shrink-0 ml-2 shadow-xs"
         >
-          <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
         </button>
       </div>
     </div>

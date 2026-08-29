@@ -19,35 +19,35 @@ import {
 
 export const Dashboard = () => {
   return (
-    <div className="space-y-3">
-      {/* 1. High-Risk Alert Banner */}
+    <div className="space-y-3.5 max-w-[1720px] mx-auto">
+      {/* 1. Full-Width High-Risk Alert Banner */}
       <AlertBanner />
 
-      {/* 2. Five KPI Risk Summary Cards */}
-      <RiskCards riskSummary={mockRiskSummary} />
-
-      {/* 3. Middle Row: Live Risk Map (Left) + Timeline & XAI (Right) */}
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-3" style={{ minHeight: 520 }}>
-        {/* LEFT: Live Risk Map – Expanded full-width viewport */}
-        <div className="xl:col-span-8 flex flex-col" style={{ minHeight: 520 }}>
+      {/* 2. Main Dashboard Top Section: 3-Column Layout (Option 1)
+          Col 1 (~52%): Live Risk Map
+          Col 2 (~24%): Risk Timeline
+          Col 3 (~24%): Vertical Risk Status Cards */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 min-h-[540px]">
+        
+        {/* COLUMN 1: Live Risk Map (52% on desktop) */}
+        <div className="lg:col-span-6 xl:col-span-6 flex flex-col h-[520px] lg:h-[540px] xl:h-[560px]">
           <RiskMap height="h-full" />
         </div>
 
-        {/* RIGHT: Timeline stacked above Explainable AI */}
-        <div className="xl:col-span-4 flex flex-col gap-3" style={{ minHeight: 520 }}>
-          {/* Risk Timeline Chart */}
-          <div style={{ height: 245 }}>
-            <RiskTimeline data={mockRiskTimeline} />
-          </div>
-          {/* Explainable AI Key Triggers */}
-          <div className="flex-1">
-            <ExplainableAI triggers={mockXaiTriggers} />
-          </div>
+        {/* COLUMN 2: Risk Timeline (24% on desktop) */}
+        <div className="lg:col-span-3 xl:col-span-3 flex flex-col h-[520px] lg:h-[540px] xl:h-[560px]">
+          <RiskTimeline />
+        </div>
+
+        {/* COLUMN 3: Vertical Risk Status Cards (24% on desktop) */}
+        <div className="lg:col-span-3 xl:col-span-3 flex flex-col h-auto lg:h-[540px] xl:h-[560px]">
+          <RiskCards layout="vertical" />
         </div>
       </div>
 
-      {/* 4. Bottom Row: Four Operational Metric Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3" style={{ minHeight: 210 }}>
+      {/* 3. Below Main Dashboard: Supporting Analytics & Operations Panels */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3.5 min-h-[220px]">
+        <ExplainableAI triggers={mockXaiTriggers} />
         <RecentAlerts alerts={mockRecentAlerts} />
         <PrecipitationNowcast />
         <DataSources sources={mockDataSources} />
