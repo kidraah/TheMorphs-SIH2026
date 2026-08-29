@@ -95,3 +95,40 @@ The null days are not optional. Training only on active days inflates the
 base rate the model sees, so it over-forecasts in operation, and the
 verification protocol's null test set has nothing to score against. They are
 sampled and recorded rather than dropped.
+
+## Licensing: MERIT Hydro is CC-BY-NC 4.0 — non-commercial
+
+MERIT Hydro (and MERIT DEM beneath it) are released under **CC-BY-NC 4.0**.
+The NC clause is on a **core input layer**, not an optional extra: HAND and
+upstream area feed the flash-flood head directly.
+
+Consequences, recorded now rather than discovered later:
+
+- Fine for SIH, for research, and for publication with attribution.
+- **Not fine for a commercial product or a paid service** without separate
+  permission from the authors.
+- It is viral in the practical sense that matters: a trained model whose
+  input channels were derived from MERIT is awkward to relicense, even
+  though the weights themselves are not obviously a derivative work. That
+  ambiguity is exactly what makes it worth flagging early.
+
+**The escape hatch, if this is ever commercialised:** HydroSHEDS is
+CC-BY 4.0 (no NC clause) and already supplies flow direction, flow
+accumulation and a conditioned DEM. Only **HAND** is MERIT-exclusive, and
+HAND is derivable from a conditioned DEM plus a drainage network — both of
+which HydroSHEDS provides. So the non-commercial dependency is one derived
+layer, not the whole hydrology stack, and it is replaceable with effort.
+
+CartoDEM (ISRO/Bhoonidhi) has its own terms and is the more defensible
+choice for an Indian operational system regardless of licensing.
+
+### Why `upa` is taken from MERIT even though HydroSHEDS has accumulation
+
+Deliberate: MERIT's `upa` is derived from the same conditioned DEM as its
+`hnd`, so the two hydrology channels share a lineage. Mixing HydroSHEDS
+accumulation with MERIT HAND would put two different DEM conditionings into
+adjacent channels, and any disagreement between them would look to the model
+like signal.
+
+Note `n30e090` and the northern half of `n30e060` are mostly Tibet/China;
+only the southern strips intersect the AOI.

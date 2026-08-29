@@ -192,3 +192,45 @@ resource pre-positioning and clearly is not for evacuation.
 The right people to set this are IMD / NDMA, not us. Until they do, report
 both operating points and let the reader see the trade rather than
 presenting either as *the* answer.
+
+## 7. OPEN: no cross-attention between the satellite and thermodynamic streams
+
+The problem statement specifies cross-attention:
+
+> *"A shared multi-modal spatiotemporal transformer network continuously
+> analyzes real-time satellite grids ... against the IMDAA-derived
+> thermodynamic baselines using **cross-attention mechanisms**."*
+
+**The current model does not do this.** Every input enters through one
+`nn.Conv3d(in_channels, dim, ...)` stem: satellite bands, reanalysis fields
+and static channels are concatenated along the channel axis and mixed by a
+single convolution. That is early fusion, not cross-attention.
+
+This is a gap on two counts, and the second matters more than the first:
+
+**1. It does not match the stated design.** A judge reading the problem
+statement and then the architecture will find the mechanism missing.
+
+**2. There is a real physical argument for it.** The streams have genuinely
+different native resolutions and cadences:
+
+| stream | native | cadence |
+|---|---|---|
+| INSAT TIR | 4 km | 30 min |
+| INSAT WV | 8 km (3D/3DR) | 30 min |
+| ERA5 thermodynamics | ~25 km | 1 h |
+| DEM / hydrology | 90 m → static | never |
+
+Early fusion forces all of them onto the 4 km analysis grid *before* the
+model sees anything, which upsamples ERA5 by ~6x and spends 36 tokens
+representing what is physically one value. Cross-attention would let the
+fine, fast satellite stream **query** a coarse, slow thermodynamic stream at
+its own native resolution — fewer tokens, no invented resolution, and the
+attention weights become a readable statement about which thermodynamic
+context mattered where, which feeds the XAI panel directly.
+
+**Proposed shape** (not yet implemented): keep the satellite stream as the
+query path at 4 km/patch 4, tokenise ERA5 at its own ~25 km grid (roughly
+39x44 = 1,716 tokens over the India box, i.e. ~3% of the satellite token
+count), and add a cross-attention sub-layer per block. Cost is small because
+the key/value set is tiny relative to the queries.
