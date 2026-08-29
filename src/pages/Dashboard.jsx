@@ -26,17 +26,17 @@ export const Dashboard = () => {
       {/* 2. Five KPI Risk Summary Cards */}
       <RiskCards riskSummary={mockRiskSummary} />
 
-      {/* 3. Middle Row: Live Risk Map (Left ~62%) + Timeline & XAI (Right ~38%) */}
-      <div className="grid gap-3" style={{ gridTemplateColumns: '1fr 340px' }}>
-        {/* LEFT: Live Risk Map – taller height to dominate this row */}
-        <div style={{ minHeight: 480 }}>
+      {/* 3. Middle Row: Live Risk Map (Left) + Timeline & XAI (Right) */}
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-3" style={{ minHeight: 520 }}>
+        {/* LEFT: Live Risk Map – Expanded full-width viewport */}
+        <div className="xl:col-span-8 flex flex-col" style={{ minHeight: 520 }}>
           <RiskMap height="h-full" />
         </div>
 
         {/* RIGHT: Timeline stacked above Explainable AI */}
-        <div className="flex flex-col gap-3" style={{ minHeight: 480 }}>
+        <div className="xl:col-span-4 flex flex-col gap-3" style={{ minHeight: 520 }}>
           {/* Risk Timeline Chart */}
-          <div style={{ height: 230 }}>
+          <div style={{ height: 245 }}>
             <RiskTimeline data={mockRiskTimeline} />
           </div>
           {/* Explainable AI Key Triggers */}
@@ -46,8 +46,8 @@ export const Dashboard = () => {
         </div>
       </div>
 
-      {/* 4. Bottom Row: Four Equal-Width Operational Metric Cards */}
-      <div className="grid grid-cols-4 gap-3" style={{ minHeight: 200 }}>
+      {/* 4. Bottom Row: Four Operational Metric Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3" style={{ minHeight: 210 }}>
         <RecentAlerts alerts={mockRecentAlerts} />
         <PrecipitationNowcast />
         <DataSources sources={mockDataSources} />

@@ -1,11 +1,11 @@
 import React from 'react';
 import { ImdLogo, MoesLogo, Imd150Logo } from '../assets/emblems';
 import govEmblem from '../assets/gov_emblem.png';
-import pmHeaderImg from '../assets/prime-minister-header.png';
+import ndmaLogo from '../assets/ndma_logo.png';
 
 export const Header = () => {
   return (
-    <header className="bg-white border-b border-slate-200">
+    <header className="bg-white border-b border-[#E2E2E2]">
       <div className="max-w-[1720px] mx-auto px-4 py-2 flex items-center justify-between gap-4">
 
         {/* ── LEFT: Ashoka Emblem Image + MoES label + IMD logo + IMD full name ── */}
@@ -42,19 +42,24 @@ export const Header = () => {
           </div>
         </div>
 
-        {/* ── RIGHT: MoES logo + 150 Years logo + Prime Minister Header Asset ── */}
+        {/* ── RIGHT: NDMA Logo + MoES Logo + 150 Years Logo ── */}
         <div className="flex items-center gap-3.5 ml-auto shrink-0">
+          {/* NDMA Logo */}
+          <img
+            src={ndmaLogo}
+            alt="National Disaster Management Authority (NDMA)"
+            className="h-[62px] md:h-[70px] w-auto object-contain shrink-0"
+          />
+          <div className="h-9 w-px bg-slate-200 hidden sm:block" />
+
+          {/* MoES Logo */}
           <div className="hidden md:block">
             <MoesLogo className="h-[44px] w-auto" />
           </div>
           <div className="h-9 w-px bg-slate-200 hidden md:block" />
+
+          {/* 150 Years Logo */}
           <Imd150Logo className="h-[44px] w-auto" />
-          <div className="h-10 w-px bg-slate-200 hidden sm:block" />
-          <img
-            src={pmHeaderImg}
-            alt="Prime Minister of India"
-            className="h-[72px] md:h-[80px] w-auto object-contain shrink-0 hidden sm:block"
-          />
         </div>
       </div>
     </header>
