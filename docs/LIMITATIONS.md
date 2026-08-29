@@ -48,7 +48,7 @@ this caveat attached.
 What SEVIR *does* buy: a debugged end-to-end pipeline and a warm start for
 the shared backbone. The scientific claim rests entirely on Indian data.
 
-## 3. Flash floods are scored with the wrong geometry (open)
+## 3. Flash floods are scored with the wrong geometry (CLOSED in the harness, OPEN in the data)
 
 The flash-flood pathway is catchment-scale by definition — slope, drainage,
 routed precipitation — but is currently scored on the 4 km pixel grid like
@@ -272,3 +272,47 @@ query path at 4 km/patch 4, tokenise ERA5 at its own ~25 km grid (roughly
 39x44 = 1,716 tokens over the India box, i.e. ~3% of the satellite token
 count), and add a cross-attention sub-layer per block. Cost is small because
 the key/value set is tiny relative to the queries.
+
+
+## 8. The flood track routes on an UNVERIFIED flow-direction convention
+
+`nowcast_flood` is deterministic physics end to end — SCS curve number,
+D8 routing, reach-catchment sub-basins, Kirpich timing, HAND exposure — and
+every piece is tested against a hand-checkable answer or a conservation law.
+
+**But no real flow-direction raster has ever been read here.** MERIT `dir`
+is not downloaded (only `hnd` and `upa` are; see
+[FLOOD_DATA.md](FLOOD_DATA.md)). The D8 encoding in `flow.py` is taken from
+documentation, and a transposed or reversed reading would still route, still
+delineate basins, and still return plausible discharges and arrival times.
+It is the project's recurring bug class with a raster instead of a sentinel.
+
+**Gate:** `verify_against_upa()` recomputes accumulation from `dir` and
+checks it reproduces MERIT's own `upa`. Nothing from the flood track should
+be quoted until that passes.
+
+## 9. Kirpich is applied two orders of magnitude outside its fitted range
+
+Kirpich (1940) was fitted on seven Tennessee agricultural watersheds of
+**0.4–45 hectares** (0.004–0.45 km²). The sub-basins here begin at the
+channel threshold, typically 25 km², and run to hundreds of km².
+
+The arrival times are therefore a **screening estimate and an ordering**,
+not defensible absolute lead times, and `TimingResult.report()` states the
+fraction of basins outside the fitted range on every call. Closing this
+means checking predicted arrival times against observed IMD/CWC flood
+arrivals for gauged events — which is a validation task, not a code task.
+
+Two further assumptions kept in the open: Kirpich assumes an unlined natural
+channel (lined urban channels run ~0.4×, dense overland grass ~2×), and the
+0.2 initial-abstraction ratio is a 1950s US calibration that later work puts
+nearer 0.05 elsewhere. Both are parameters, not constants, and both are
+recorded in `FloodForecast.meta`.
+
+## 10. The flood risk scale has a placeholder reference discharge
+
+`FloodRouter._default_reference()` normalises discharge by a crude regional
+envelope, `q ~ 0.5 A^0.8`. It makes the risk scale *defined*, not
+*defensible* — the same status as the 0.80 FAR ceiling in #6. Replace it
+with CWC gauged bankfull discharges before any risk number is published.
+The reference actually used is recorded in `FloodForecast.meta`.

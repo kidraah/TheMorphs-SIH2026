@@ -84,12 +84,15 @@ class EvaluationResult:
         lines.append(f"eval: {cfg['name']}   headline threshold p>={cfg['headline_threshold']}")
         if cfg.get("geometry", "grid") == "point":
             lines.append("geometry: point (station locations)")
+        elif cfg.get("geometry", "grid") == "basin":
+            lines.append(f"geometry: basin (sub-basin polygons, "
+                         f"{cfg.get('basin_weighting', 'area')}-weighted)")
         else:
             lines.append(f"grid {cfg['grid_km']} km   "
                          f"neighbourhoods {list(cfg['neighborhood_km'])} km")
         lines.append("")
         head = f"{'lead':>8} {'base rate':>11} {'POD':>7} {'FAR':>7} {'CSI':>7} {'bias':>7} {'BSS':>8}"
-        point = cfg.get("geometry", "grid") == "point"
+        point = cfg.get("geometry", "grid") in ("point", "basin")
         fss_cols = [] if point else [f"FSS@{int(k)}km" for k in cfg["neighborhood_km"]]
         head += "".join(f"{c:>10}" for c in fss_cols)
         lines.append(head)
@@ -113,7 +116,7 @@ class EvaluationResult:
                      f"CSI {self.pooled['headline']['csi']:.3f}  "
                      f"BSS {self.pooled['probabilistic']['bss']:.3f}")
         if point:
-            lines.append("geometry=point: FSS omitted -- station order is not "
+            lines.append("geometry is not a grid: FSS omitted -- element order is not "
                          "a spatial neighbourhood")
         else:
             lines.append(f"'useful' FSS line for this base rate: "
@@ -142,17 +145,19 @@ def _binarise_obs(obs: np.ndarray, cfg: EvalConfig) -> np.ndarray:
     return (np.asarray(obs, dtype=np.float64) >= cfg.obs_threshold).astype(np.float64)
 
 
-def _score_block(pred, obs, mask, cfg: EvalConfig) -> dict:
+def _score_block(pred, obs, mask, cfg: EvalConfig, weights=None) -> dict:
     """All scores for one slab of (pred, obs). Used per-lead and pooled."""
-    tables = [contingency(pred, obs, t, mask).to_dict() for t in cfg.thresholds]
-    headline = contingency(pred, obs, cfg.headline_threshold, mask).to_dict()
+    tables = [contingency(pred, obs, t, mask, weights).to_dict()
+              for t in cfg.thresholds]
+    headline = contingency(pred, obs, cfg.headline_threshold, mask,
+                           weights).to_dict()
 
     # Point geometry has no spatial neighbourhood: stations are irregularly
     # spaced and their array order carries no distance information, so a
     # neighbourhood filter over it would be meaningless. FSS is omitted
     # rather than computed on nonsense.
     fss_rows = []
-    if not cfg.is_point:
+    if cfg.has_neighborhood:
         for size, km in zip(cfg.neighborhood_pixels(), cfg.neighborhood_km):
             for t in cfg.thresholds:
                 fss_rows.append(fss(pred, obs, t, size, mask, grid_km=km).to_dict()
@@ -175,6 +180,7 @@ def evaluate(
     mask: np.ndarray | None = None,
     lead_minutes: Sequence[float] | None = None,
     meta: dict[str, Any] | None = None,
+    weights: np.ndarray | None = None,
 ) -> EvaluationResult:
     """Score a set of probabilistic nowcasts. See module docstring for shapes."""
     cfg = config or EvalConfig()
@@ -183,10 +189,12 @@ def evaluate(
 
     if pred.shape != obs.shape:
         raise ValueError(f"shape mismatch: pred {pred.shape} vs obs {obs.shape}")
-    if cfg.is_point:
+    if cfg.is_point or cfg.is_basin:
         if pred.ndim != 3:
+            shape, unit = (("(N, L, S)", "S station locations") if cfg.is_point
+                           else ("(N, L, B)", "B sub-basin polygons"))
             raise ValueError(
-                f"geometry='point' expects (N, L, S) with S station locations, "
+                f"geometry={cfg.geometry!r} expects {shape} with {unit}, "
                 f"got {pred.shape}")
     elif pred.ndim != 4:
         raise ValueError(
@@ -196,6 +204,29 @@ def evaluate(
             f"which would make FSS average over station index.")
     if np.isfinite(pred).any() and (np.nanmin(pred) < 0 or np.nanmax(pred) > 1):
         raise ValueError("pred must be probabilities in [0, 1]")
+
+    # Basin geometry REQUIRES an explicit weighting decision. Defaulting to
+    # equal weights here would reproduce, silently, the exact error the
+    # geometry field exists to prevent: basins are not interchangeable units.
+    if cfg.is_basin:
+        if cfg.basin_weighting == "equal":
+            weights = None
+        elif weights is None:
+            raise ValueError(
+                f"geometry='basin' with basin_weighting="
+                f"{cfg.basin_weighting!r} needs `weights` -- one non-negative "
+                f"value per basin (area in km^2, or population), broadcastable "
+                f"to {pred.shape}. Sub-basin areas differ by orders of "
+                f"magnitude, so counting each basin once measures skill per "
+                f"basin, not per unit of land. Pass "
+                f"EvalConfig(basin_weighting='equal') if that is genuinely "
+                f"what you want.")
+    elif weights is not None:
+        raise ValueError(f"weights are only meaningful for geometry='basin'; "
+                         f"got geometry={cfg.geometry!r}")
+    if weights is not None:
+        weights = np.broadcast_to(np.asarray(weights, dtype=np.float64),
+                                  pred.shape)
 
     if mask is not None:
         mask = np.broadcast_to(np.asarray(mask, dtype=bool), pred.shape)
@@ -211,7 +242,8 @@ def evaluate(
     per_lead = []
     for li in range(n_lead):
         m = mask[:, li] if mask is not None else None
-        blk = _score_block(pred[:, li], obs[:, li], m, cfg)
+        blk = _score_block(pred[:, li], obs[:, li], m, cfg,
+                           weights[:, li] if weights is not None else None)
         per_lead.append(LeadTimeScores(
             lead_index=li,
             lead_minutes=float(lead_minutes[li]) if lead_minutes is not None else None,
@@ -225,8 +257,12 @@ def evaluate(
     pooled = _score_block(pred.reshape(-1, *pred.shape[2:]),
                           obs.reshape(-1, *obs.shape[2:]),
                           mask.reshape(-1, *mask.shape[2:]) if mask is not None else None,
-                          cfg)
+                          cfg,
+                          weights.reshape(-1, *weights.shape[2:])
+                          if weights is not None else None)
     pooled["geometry"] = cfg.geometry
+    if cfg.is_basin:
+        pooled["basin_weighting"] = cfg.basin_weighting
 
     return EvaluationResult(
         config=cfg.to_dict(),
@@ -242,6 +278,7 @@ def evaluate_predict_fn(
     config: EvalConfig | None = None,
     lead_minutes: Sequence[float] | None = None,
     meta: dict[str, Any] | None = None,
+    weights: np.ndarray | None = None,
 ) -> EvaluationResult:
     """Convenience wrapper: run a model over a dataset, then score it.
 

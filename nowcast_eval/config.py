@@ -28,12 +28,31 @@ class EvalConfig:
     # --- Geometry ----------------------------------------------------------
     # "grid"  -> (N, L, H, W); neighbourhood metrics (FSS) are meaningful.
     # "point" -> (N, L, S) at S irregular station locations; FSS is SKIPPED.
+    # "basin" -> (N, L, B) over B sub-basin polygons; FSS is SKIPPED and
+    #            elements are AREA-WEIGHTED (see `basin_weighting`).
+    #
+    # Flash floods are basin-scale, so the flood head genuinely scores on a
+    # different geometry from the other two. It would "work" today declared
+    # as point -- the array rank matches -- and that is the trap: point
+    # geometry weights every element equally, which is right for gauges and
+    # wrong for basins, because sub-basin areas differ by orders of
+    # magnitude. Scoring them equally measures skill per basin instead of
+    # per unit of land, flattering a forecast that gets many tiny headwater
+    # basins right and under-counting the large valleys where people live.
     #
     # This is not a formality. Station data shoehorned into a degenerate
     # (N, L, 1, S) grid runs happily and reports an FSS that averaged over
     # adjacent station INDICES -- alphabetical-order smoothing wearing a
     # kilometre label. Declaring the geometry makes that impossible.
     geometry: str = "grid"
+
+    # How basin elements are weighted in the contingency table. "area" is
+    # the default and the defensible one; "equal" is available because a
+    # per-basin skill number is sometimes what is wanted, but it must be a
+    # stated choice rather than an accident of array shape. "population"
+    # answers the question an alerting system actually cares about, and
+    # needs a settlement layer.
+    basin_weighting: str = "area"
 
     # --- Ground truth ------------------------------------------------------
     # If `obs` arrives continuous (e.g. mm/hr of QPE) this threshold makes it
@@ -55,13 +74,31 @@ class EvalConfig:
     notes: str = ""
 
     def __post_init__(self):
-        if self.geometry not in ("grid", "point"):
-            raise ValueError(f"geometry must be 'grid' or 'point', "
+        if self.geometry not in ("grid", "point", "basin"):
+            raise ValueError(f"geometry must be 'grid', 'point' or 'basin', "
                              f"got {self.geometry!r}")
+        if self.basin_weighting not in ("area", "equal", "population"):
+            raise ValueError(f"basin_weighting must be 'area', 'equal' or "
+                             f"'population', got {self.basin_weighting!r}")
 
     @property
     def is_point(self) -> bool:
         return self.geometry == "point"
+
+    @property
+    def is_basin(self) -> bool:
+        return self.geometry == "basin"
+
+    @property
+    def has_neighborhood(self) -> bool:
+        """FSS is only meaningful on a regular grid.
+
+        Point and basin geometries are both irregular, but for different
+        reasons -- station array order carries no distance, and basin
+        adjacency is a river network rather than a raster. Both skip FSS;
+        neither should be silently reshaped into a grid to get one.
+        """
+        return self.geometry == "grid"
 
     def neighborhood_pixels(self) -> list[int]:
         """km -> odd pixel window widths."""

@@ -24,23 +24,35 @@ def _safe_div(num: float, den: float) -> float:
 
 @dataclass(frozen=True)
 class ContingencyTable:
-    hits: int
-    false_alarms: int
-    misses: int
-    correct_negatives: int
+    """Cell counts, or WEIGHTED cell mass when `weighted` is True.
+
+    Weighted tables exist for basin geometry. Basins are not
+    interchangeable units the way grid cells and gauges are: a level-12
+    sub-basin can be 5 km^2 or 500 km^2, and counting each as one entry
+    scores the forecast per BASIN rather than per unit of land. That
+    silently rewards getting many tiny headwater basins right and lets a
+    single large valley -- where the people are -- weigh the same as a
+    ravine. Every ratio below is unchanged in form; only the counting
+    measure changes, which is why the flag is carried on the table.
+    """
+    hits: float
+    false_alarms: float
+    misses: float
+    correct_negatives: float
     threshold: float
+    weighted: bool = False
 
     # --- counts ------------------------------------------------------------
     @property
-    def n(self) -> int:
+    def n(self) -> float:
         return self.hits + self.false_alarms + self.misses + self.correct_negatives
 
     @property
-    def n_observed(self) -> int:
+    def n_observed(self) -> float:
         return self.hits + self.misses
 
     @property
-    def n_forecast(self) -> int:
+    def n_forecast(self) -> float:
         return self.hits + self.false_alarms
 
     @property
@@ -153,6 +165,7 @@ class ContingencyTable:
     def to_dict(self) -> dict:
         return {
             "threshold": self.threshold,
+            "weighted": self.weighted,
             "hits": self.hits,
             "false_alarms": self.false_alarms,
             "misses": self.misses,
@@ -176,13 +189,18 @@ def contingency(
     obs: np.ndarray,
     threshold: float,
     mask: np.ndarray | None = None,
+    weights: np.ndarray | None = None,
 ) -> ContingencyTable:
     """Build the table.
 
-    pred : float probabilities in [0, 1]
-    obs  : boolean / 0-1 truth, same shape
-    mask : True where the cell is valid. Invalid cells are dropped, never
-           silently counted as no-event.
+    pred    : float probabilities in [0, 1]
+    obs     : boolean / 0-1 truth, same shape
+    mask    : True where the cell is valid. Invalid cells are dropped, never
+              silently counted as no-event.
+    weights : per-element counting measure, broadcast to pred's shape. None
+              means each element counts once, which is right for equal-area
+              grid cells and for gauges. It is NOT right for basins -- see
+              the class docstring.
     """
     pred = np.asarray(pred)
     obs = np.asarray(obs)
@@ -196,10 +214,23 @@ def contingency(
     f = (pred >= threshold) & valid
     o = (obs > 0) & valid
 
+    if weights is None:
+        return ContingencyTable(
+            hits=int(np.count_nonzero(f & o)),
+            false_alarms=int(np.count_nonzero(f & ~o & valid)),
+            misses=int(np.count_nonzero(~f & o & valid)),
+            correct_negatives=int(np.count_nonzero(~f & ~o & valid)),
+            threshold=float(threshold),
+        )
+
+    w = np.broadcast_to(np.asarray(weights, dtype=np.float64), pred.shape)
+    if np.any(w < 0) or not np.all(np.isfinite(w[valid])):
+        raise ValueError("weights must be finite and non-negative where valid")
     return ContingencyTable(
-        hits=int(np.count_nonzero(f & o)),
-        false_alarms=int(np.count_nonzero(f & ~o & valid)),
-        misses=int(np.count_nonzero(~f & o & valid)),
-        correct_negatives=int(np.count_nonzero(~f & ~o & valid)),
+        hits=float(w[f & o].sum()),
+        false_alarms=float(w[f & ~o & valid].sum()),
+        misses=float(w[~f & o & valid].sum()),
+        correct_negatives=float(w[~f & ~o & valid].sum()),
         threshold=float(threshold),
+        weighted=True,
     )

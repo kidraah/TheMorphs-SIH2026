@@ -140,14 +140,14 @@ class MultiHazardResult:
         lines += [hdr, "-" * len(hdr)]
         for name, r in self.hazards.items():
             h = r.pooled["headline"]
-            events = h["hits"] + h["misses"]
+            events = h["hits"] + h["misses"]   # weighted mass under basin geometry
             ci = r.pooled.get("ci")
             if ci and np.isfinite(ci["lo"].get("sedi", np.nan)):
                 sedi = (f"{h['sedi']:.3f} "
                         f"[{ci['lo']['sedi']:+.3f},{ci['hi']['sedi']:+.3f}]")
             else:
                 sedi = f"{h['sedi']:.3f}"
-            lines.append(f"{name:>14} {r.pooled['base_rate']:>11.2e} {events:>9d} "
+            lines.append(f"{name:>14} {r.pooled['base_rate']:>11.2e} {events:>9,.0f} "
                          f"{sedi:>24} "
                          f"{h['csi']:>7.3f} {h['pod']:>7.3f} {h['far']:>7.3f} "
                          f"{r.pooled['probabilistic']['bss']:>8.3f}")
@@ -174,7 +174,8 @@ class MultiHazardResult:
                      "heads (base-rate dependent)")
 
         thin = [n for n, r in self.hazards.items()
-                if (r.pooled["headline"]["hits"] + r.pooled["headline"]["misses"]) < 100]
+                if (r.pooled["headline"]["hits"] + r.pooled["headline"]["misses"]) < 100
+                and not r.pooled["headline"].get("weighted", False)]
         if thin:
             lines.append(f"!!  too few events to trust: {', '.join(thin)} "
                          f"-- attach bootstrap CIs before comparing models")
@@ -221,8 +222,14 @@ def evaluate_multi(
     masks: Mapping[str, np.ndarray] | None = None,
     lead_minutes: Sequence[float] | None = None,
     meta: dict | None = None,
+    weights: Mapping[str, np.ndarray] | None = None,
 ) -> MultiHazardResult:
     """Score every head. Each hazard keeps its own config.
+
+    The three heads genuinely have three geometries -- thunderstorm on the
+    grid, cloudburst at gauges, flash flood on sub-basins -- which is why
+    per-hazard configs exist and why `weights` is per-hazard too: only the
+    basin head takes them.
 
     Per-hazard configs matter: the alerting threshold and the label
     definition that make sense for a thunderstorm are not the ones that make
@@ -245,5 +252,6 @@ def evaluate_multi(
             mask=(masks or {}).get(name),
             lead_minutes=lead_minutes,
             meta=(meta or {}) | {"hazard": name},
+            weights=(weights or {}).get(name),
         )
     return out
