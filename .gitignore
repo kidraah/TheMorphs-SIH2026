@@ -1,3 +1,6 @@
+# Project planning / internal docs (not for repo)
+DESIGN_PLAN.md
+
 # Dependencies
 node_modules/
 .pnp
@@ -36,12 +39,34 @@ pnpm-debug.log*
 .DS_Store
 Thumbs.db
 Desktop.ini
+ehthumbs.db
 
 # Vite cache
 .vite/
+*.local
 
 # TypeScript
 *.tsbuildinfo
 
 # Testing
 coverage/
+.nyc_output/
+
+# ESLint / Prettier cache
+.eslintcache
+.stylelintcache
+.prettiercache
+
+# Storybook
+storybook-static/
+
+# Temp / scratch
+*.tmp
+*.temp
+*.bak
+*.orig
+
+# Optional: lock files (uncomment if you prefer not to commit them)
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
