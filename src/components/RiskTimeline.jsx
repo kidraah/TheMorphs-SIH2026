@@ -46,11 +46,13 @@ export const RiskTimeline = () => {
   }[selectedTimeRange] || '(Next 6 Hours)';
 
   return (
-    <div className="bg-white border border-slate-200 rounded p-3 shadow-gov-sm flex flex-col justify-between h-full">
+    <div className="bg-white border border-[#E2E2E2] rounded p-3 shadow-gov-sm flex flex-col justify-between h-full">
       {/* Header */}
-      <div className="border-b border-slate-200 pb-1.5 mb-1.5 flex items-center justify-between">
-        <h3 className="text-xs sm:text-[13px] font-bold text-slate-900 m-0">
-          Risk Timeline <span className="text-slate-500 font-normal text-[11px]">{rangeLabel}</span>
+      <div className="border-b border-[#E2E2E2] pb-1.5 mb-1.5 flex items-center justify-between">
+        <h3 className="text-xs sm:text-[13px] font-bold text-[#172033] m-0 flex items-center gap-1.5">
+          <span className="w-1 h-3.5 bg-[#E87516] rounded-sm inline-block"></span>
+          <span>Risk Timeline</span>
+          <span className="text-slate-500 font-normal text-[11px]">{rangeLabel}</span>
         </h3>
       </div>
 

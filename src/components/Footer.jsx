@@ -7,7 +7,7 @@ export const Footer = () => {
         <div className="flex items-center gap-1">
           <span>© {new Date().getFullYear()} India Meteorological Department</span>
         </div>
-        <div className="font-semibold text-[#0A3871] hidden sm:block">
+        <div className="font-semibold text-[#E87516] hidden sm:block">
           AI-Driven Hyper-Local Early Warning System
         </div>
         <div className="text-slate-500 font-medium">

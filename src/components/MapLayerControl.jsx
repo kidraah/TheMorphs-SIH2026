@@ -17,23 +17,23 @@ export const MapLayerControl = () => {
   return (
     <div className="absolute top-3 right-3 z-[500] font-sans">
       {/* Compact Header Button */}
-      <div className="bg-white/95 border border-slate-300 rounded shadow-md text-xs">
+      <div className="bg-white/95 border border-[#E2E2E2] rounded shadow-md text-xs">
         <button
           type="button"
           onClick={() => setIsOpen((prev) => !prev)}
-          className="flex items-center justify-between gap-2 px-2.5 py-1.5 font-bold text-slate-800 hover:bg-slate-100 transition-colors w-full"
+          className="flex items-center justify-between gap-2 px-2.5 py-1.5 font-bold text-[#172033] hover:bg-[#FFF7EA] transition-colors w-full"
         >
           <div className="flex items-center gap-1.5">
-            <Layers className="w-3.5 h-3.5 text-[#0A3871]" />
+            <Layers className="w-3.5 h-3.5 text-[#E87516]" />
             <span className="uppercase text-[10.5px] tracking-wider text-slate-600">Map View:</span>
-            <span className="text-[11px] text-[#0A3871] font-extrabold">{activeBasemapObj.name}</span>
+            <span className="text-[11px] text-[#C85D00] font-extrabold">{activeBasemapObj.name}</span>
           </div>
           <ChevronDown className={`w-3.5 h-3.5 text-slate-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
         </button>
 
         {/* Panel Menu */}
         {isOpen && (
-          <div className="border-t border-slate-200 p-2.5 bg-white w-60 shadow-xl rounded-b text-xs space-y-2.5">
+          <div className="border-t border-[#E2E2E2] p-2.5 bg-white w-60 shadow-xl rounded-b text-xs space-y-2.5">
             {/* BASEMAPS SECTION */}
             <div>
               <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wide border-b border-slate-100 pb-1 mb-1.5">
@@ -45,8 +45,8 @@ export const MapLayerControl = () => {
                     key={b.id}
                     className={`flex items-center justify-between p-1.5 rounded cursor-pointer transition-colors ${
                       basemap === b.id
-                        ? 'bg-blue-50/80 text-[#0A3871] font-bold border border-blue-200'
-                        : 'text-slate-700 hover:bg-slate-50 border border-transparent'
+                        ? 'bg-[#FFF1DD] text-[#C85D00] font-bold border border-orange-200'
+                        : 'text-[#172033] hover:bg-[#FFF7EA] border border-transparent'
                     }`}
                   >
                     <div className="flex items-center gap-2">
@@ -56,11 +56,11 @@ export const MapLayerControl = () => {
                         value={b.id}
                         checked={basemap === b.id}
                         onChange={() => setBasemap(b.id)}
-                        className="accent-[#0A3871]"
+                        className="accent-[#E87516]"
                       />
                       <span className="text-[11px]">{b.name}</span>
                     </div>
-                    {basemap === b.id && <Check className="w-3 h-3 text-[#0A3871]" />}
+                    {basemap === b.id && <Check className="w-3 h-3 text-[#E87516]" />}
                   </label>
                 ))}
               </div>
@@ -75,26 +75,26 @@ export const MapLayerControl = () => {
                 {MAP_OVERLAYS.map((overlay) => (
                   <label
                     key={overlay.key}
-                    className="flex items-center justify-between p-1.5 rounded hover:bg-slate-50 cursor-pointer text-slate-700 transition-colors"
+                    className="flex items-center justify-between p-1.5 rounded hover:bg-[#FFF7EA] cursor-pointer text-[#172033] transition-colors"
                   >
                     <div className="flex items-center gap-2">
                       <input
                         type="checkbox"
                         checked={!!mapLayers[overlay.key]}
                         onChange={() => toggleMapLayer(overlay.key)}
-                        className="rounded accent-[#0A3871]"
+                        className="rounded accent-[#E87516]"
                       />
                       <span className="text-[11px]">{overlay.name}</span>
                     </div>
                   </label>
                 ))}
-                <label className="flex items-center justify-between p-1.5 rounded hover:bg-slate-50 cursor-pointer text-slate-700 transition-colors">
+                <label className="flex items-center justify-between p-1.5 rounded hover:bg-[#FFF7EA] cursor-pointer text-[#172033] transition-colors">
                   <div className="flex items-center gap-2">
                     <input
                       type="checkbox"
                       checked={showBorders}
                       onChange={toggleBorders}
-                      className="rounded accent-[#0A3871]"
+                      className="rounded accent-[#E87516]"
                     />
                     <span className="text-[11px]">District Boundaries</span>
                   </div>

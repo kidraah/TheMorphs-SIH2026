@@ -48,8 +48,8 @@ export const Sidebar = () => {
               className={({ isActive }) =>
                 `flex items-center justify-between px-3 py-2 rounded text-xs font-semibold transition-colors duration-100 border-l-4 ${
                   isActive
-                    ? 'bg-[#EBF3FC] text-[#1D4ED8] border-[#1D4ED8]'
-                    : 'text-slate-700 hover:bg-slate-50 hover:text-slate-900 border-transparent'
+                    ? 'bg-[#FFF1DD] text-[#C85D00] border-[#E87516]'
+                    : 'text-[#172033] hover:bg-[#FFF7EA] hover:text-[#C85D00] border-transparent'
                 }`
               }
             >

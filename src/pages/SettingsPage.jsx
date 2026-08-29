@@ -17,10 +17,11 @@ export const SettingsPage = () => {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="bg-white border border-slate-200 rounded p-3.5 flex flex-wrap items-center justify-between gap-3 shadow-gov-sm">
+      <div className="bg-white border border-[#E2E2E2] rounded p-3.5 flex flex-wrap items-center justify-between gap-3 shadow-gov-sm">
         <div>
-          <h2 className="text-base font-bold text-[#0A3871] m-0 flex items-center gap-2">
-            <Settings className="w-5 h-5 text-blue-700" />
+          <h2 className="text-base font-bold text-[#172033] m-0 flex items-center gap-2">
+            <span className="w-1.5 h-4.5 bg-[#E87516] rounded-sm inline-block"></span>
+            <Settings className="w-5 h-5 text-[#E87516]" />
             System Configuration & Alert Dispatch Settings
           </h2>
           <p className="text-xs text-slate-500 mt-0.5 m-0">
@@ -31,8 +32,8 @@ export const SettingsPage = () => {
 
       <form onSubmit={handleSave} className="space-y-4">
         {/* Risk Thresholds Card */}
-        <div className="bg-white border border-slate-200 rounded p-4 shadow-gov-sm space-y-3">
-          <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider border-b pb-2 flex items-center gap-1.5">
+        <div className="bg-white border border-[#E2E2E2] rounded p-4 shadow-gov-sm space-y-3">
+          <h3 className="text-xs font-bold text-[#172033] uppercase tracking-wider border-b border-[#E2E2E2] pb-2 flex items-center gap-1.5">
             <Sliders className="w-4 h-4 text-slate-700" />
             Operational Trigger Thresholds
           </h3>
@@ -77,8 +78,8 @@ export const SettingsPage = () => {
         </div>
 
         {/* Integration Feeds Card */}
-        <div className="bg-white border border-slate-200 rounded p-4 shadow-gov-sm space-y-3">
-          <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider border-b pb-2 flex items-center gap-1.5">
+        <div className="bg-white border border-[#E2E2E2] rounded p-4 shadow-gov-sm space-y-3">
+          <h3 className="text-xs font-bold text-[#172033] uppercase tracking-wider border-b border-[#E2E2E2] pb-2 flex items-center gap-1.5">
             <BellRing className="w-4 h-4 text-slate-700" />
             Automated Warning Dissemination Channels
           </h3>
@@ -86,20 +87,20 @@ export const SettingsPage = () => {
           <div className="space-y-2 text-xs">
             <label className="flex items-center justify-between p-2.5 rounded bg-slate-50 border border-slate-200 cursor-pointer">
               <div>
-                <span className="font-bold text-slate-800 block">NDMA Common Alerting Protocol (CAP) Integration</span>
+                <span className="font-bold text-[#172033] block">NDMA Common Alerting Protocol (CAP) Integration</span>
                 <span className="text-[11px] text-slate-500">Automatically broadcast localized XML alerts to cellular base stations</span>
               </div>
               <input
                 type="checkbox"
                 checked={capAlerts}
                 onChange={(e) => setCapAlerts(e.target.checked)}
-                className="w-4 h-4 text-blue-600 rounded"
+                className="w-4 h-4 accent-[#E87516] rounded"
               />
             </label>
 
             <div className="flex items-center justify-between p-2.5 rounded bg-slate-50 border border-slate-200">
               <div>
-                <span className="font-bold text-slate-800 block">Telemetry Polling Frequency</span>
+                <span className="font-bold text-[#172033] block">Telemetry Polling Frequency</span>
                 <span className="text-[11px] text-slate-500">INSAT-3DR Rapid Scan and DWR radar sync frequency</span>
               </div>
               <select
@@ -126,7 +127,7 @@ export const SettingsPage = () => {
           )}
           <button
             type="submit"
-            className="ml-auto px-4 py-2 bg-[#0A3871] hover:bg-[#07264F] text-white text-xs font-bold rounded flex items-center gap-2 shadow-sm transition-colors"
+            className="ml-auto px-4 py-2 bg-[#E87516] hover:bg-[#C85D00] text-white text-xs font-bold rounded flex items-center gap-2 shadow-sm transition-colors"
           >
             <Save className="w-4 h-4" />
             Save Configuration

@@ -11,10 +11,11 @@ export const LiveMapPage = () => {
   return (
     <div className="space-y-4">
       {/* Page Title Header */}
-      <div className="bg-white border border-slate-200 rounded p-3.5 flex flex-wrap items-center justify-between gap-3 shadow-gov-sm">
+      <div className="bg-white border border-[#E2E2E2] rounded p-3.5 flex flex-wrap items-center justify-between gap-3 shadow-gov-sm">
         <div>
-          <h2 className="text-base font-bold text-[#0A3871] m-0 flex items-center gap-2">
-            <Layers className="w-5 h-5 text-blue-700" />
+          <h2 className="text-base font-bold text-[#172033] m-0 flex items-center gap-2">
+            <span className="w-1.5 h-4.5 bg-[#E87516] rounded-sm inline-block"></span>
+            <Layers className="w-5 h-5 text-[#E87516]" />
             Geospatial Convective Risk & Nowcasting Portal
           </h2>
           <p className="text-xs text-slate-500 mt-0.5 m-0">
@@ -41,45 +42,45 @@ export const LiveMapPage = () => {
         {/* District Detail & Layer Control Column */}
         <div className="lg:col-span-4 space-y-4">
           {/* Layer Control Card */}
-          <div className="bg-white border border-slate-200 rounded p-3.5 shadow-gov-sm">
-            <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-2.5 border-b pb-1.5 flex items-center gap-1.5">
+          <div className="bg-white border border-[#E2E2E2] rounded p-3.5 shadow-gov-sm">
+            <h3 className="text-xs font-bold text-[#172033] uppercase tracking-wider mb-2.5 border-b border-[#E2E2E2] pb-1.5 flex items-center gap-1.5">
               <Eye className="w-4 h-4 text-slate-600" />
               Active GIS Layer Controls
             </h3>
             <div className="space-y-2 text-xs">
-              <label className="flex items-center justify-between p-2 rounded bg-slate-50 hover:bg-slate-100 cursor-pointer border border-slate-200">
-                <span className="font-semibold text-slate-800">Satellite Topography Base</span>
+              <label className="flex items-center justify-between p-2 rounded bg-slate-50 hover:bg-[#FFF7EA] cursor-pointer border border-slate-200">
+                <span className="font-semibold text-[#172033]">Satellite Topography Base</span>
                 <input
                   type="checkbox"
                   checked={mapLayers.satellite}
                   onChange={() => toggleMapLayer('satellite')}
-                  className="rounded text-blue-600 w-4 h-4"
+                  className="rounded accent-[#E87516] w-4 h-4"
                 />
               </label>
-              <label className="flex items-center justify-between p-2 rounded bg-slate-50 hover:bg-slate-100 cursor-pointer border border-slate-200">
-                <span className="font-semibold text-slate-800">Convective Risk Contours</span>
+              <label className="flex items-center justify-between p-2 rounded bg-slate-50 hover:bg-[#FFF7EA] cursor-pointer border border-slate-200">
+                <span className="font-semibold text-[#172033]">Convective Risk Contours</span>
                 <input
                   type="checkbox"
                   checked={mapLayers.riskContours}
                   onChange={() => toggleMapLayer('riskContours')}
-                  className="rounded text-blue-600 w-4 h-4"
+                  className="rounded accent-[#E87516] w-4 h-4"
                 />
               </label>
-              <label className="flex items-center justify-between p-2 rounded bg-slate-50 hover:bg-slate-100 cursor-pointer border border-slate-200">
-                <span className="font-semibold text-slate-800">District Polygons & Labels</span>
+              <label className="flex items-center justify-between p-2 rounded bg-slate-50 hover:bg-[#FFF7EA] cursor-pointer border border-slate-200">
+                <span className="font-semibold text-[#172033]">District Polygons & Labels</span>
                 <input
                   type="checkbox"
                   checked={mapLayers.districtBorders}
                   onChange={() => toggleMapLayer('districtBorders')}
-                  className="rounded text-blue-600 w-4 h-4"
+                  className="rounded accent-[#E87516] w-4 h-4"
                 />
               </label>
             </div>
           </div>
 
           {/* District Inspector Card */}
-          <div className="bg-white border border-slate-200 rounded p-3.5 shadow-gov-sm">
-            <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-2.5 border-b pb-1.5 flex items-center gap-1.5">
+          <div className="bg-white border border-[#E2E2E2] rounded p-3.5 shadow-gov-sm">
+            <h3 className="text-xs font-bold text-[#172033] uppercase tracking-wider mb-2.5 border-b border-[#E2E2E2] pb-1.5 flex items-center gap-1.5">
               <MapPin className="w-4 h-4 text-red-600" />
               District Focus Inspector
             </h3>
@@ -94,7 +95,7 @@ export const LiveMapPage = () => {
                   const dist = DISTRICT_RISK_DATA.find((d) => d.id === e.target.value);
                   if (dist) setSelectedDistrict(dist);
                 }}
-                className="w-full text-xs font-medium text-slate-800 bg-slate-50 border border-slate-300 rounded p-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className="w-full text-xs font-medium text-slate-800 bg-slate-50 border border-slate-300 rounded p-1.5 focus:outline-none focus:ring-1 focus:ring-[#E87516]"
               >
                 {DISTRICT_RISK_DATA.map((d) => (
                   <option key={d.id} value={d.id}>

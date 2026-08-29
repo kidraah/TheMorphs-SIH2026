@@ -79,7 +79,7 @@ export const RiskCards = () => {
           {isDistrictInspected ? (
             <button
               onClick={resetFilters}
-              className="text-[9.5px] text-blue-600 font-bold hover:underline block mt-1 uppercase"
+              className="text-[9.5px] text-[#C85D00] font-bold hover:underline block mt-1 uppercase"
             >
               Clear: {displayData.overallRisk.affectedDistricts}
             </button>

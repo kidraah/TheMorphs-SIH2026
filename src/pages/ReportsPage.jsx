@@ -31,10 +31,11 @@ export const ReportsPage = () => {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="bg-white border border-slate-200 rounded p-3.5 flex flex-wrap items-center justify-between gap-3 shadow-gov-sm">
+      <div className="bg-white border border-[#E2E2E2] rounded p-3.5 flex flex-wrap items-center justify-between gap-3 shadow-gov-sm">
         <div>
-          <h2 className="text-base font-bold text-[#0A3871] m-0 flex items-center gap-2">
-            <FileText className="w-5 h-5 text-blue-700" />
+          <h2 className="text-base font-bold text-[#172033] m-0 flex items-center gap-2">
+            <span className="w-1.5 h-4.5 bg-[#E87516] rounded-sm inline-block"></span>
+            <FileText className="w-5 h-5 text-[#E87516]" />
             Official Meteorological Bulletins & Disaster SOP Reports
           </h2>
           <p className="text-xs text-slate-500 mt-0.5 m-0">
@@ -46,7 +47,7 @@ export const ReportsPage = () => {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         {/* Bulletins List (Left) */}
         <div className="lg:col-span-4 space-y-2.5">
-          <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wide">
+          <h3 className="text-xs font-bold text-[#172033] uppercase tracking-wide">
             Recent Issued Bulletins
           </h3>
           {bulletins.map((b) => (
@@ -55,12 +56,12 @@ export const ReportsPage = () => {
               onClick={() => setSelectedBulletin(b.id)}
               className={`p-3 rounded border cursor-pointer transition-all ${
                 selectedBulletin === b.id
-                  ? 'bg-blue-50/80 border-[#0A3871] shadow-sm'
-                  : 'bg-white border-slate-200 hover:bg-slate-50'
+                  ? 'bg-[#FFF1DD] border-[#E87516] shadow-sm'
+                  : 'bg-white border-[#E2E2E2] hover:bg-[#FFF7EA]'
               }`}
             >
               <div className="text-[11px] font-bold text-red-700 mb-1">{b.category}</div>
-              <div className="text-xs font-bold text-slate-900 leading-snug">{b.title}</div>
+              <div className="text-xs font-bold text-[#172033] leading-snug">{b.title}</div>
               <div className="text-[10.5px] text-slate-500 mt-1 flex items-center gap-1">
                 <Calendar className="w-3 h-3" />
                 {b.date}
@@ -70,33 +71,33 @@ export const ReportsPage = () => {
         </div>
 
         {/* Bulletin Viewer (Right) */}
-        <div className="lg:col-span-8 bg-white border border-slate-200 rounded p-6 shadow-gov-sm font-sans space-y-4">
-          <div className="flex items-center justify-between border-b pb-3">
+        <div className="lg:col-span-8 bg-white border border-[#E2E2E2] rounded p-6 shadow-gov-sm font-sans space-y-4">
+          <div className="flex items-center justify-between border-b border-[#E2E2E2] pb-3">
             <div>
               <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block">
                 GOVERNMENT OF INDIA • MINISTRY OF EARTH SCIENCES
               </span>
-              <h2 className="text-sm font-extrabold text-[#0A3871] mt-0.5">
+              <h2 className="text-sm font-extrabold text-[#E87516] mt-0.5">
                 INDIA METEOROLOGICAL DEPARTMENT
               </h2>
             </div>
             <div className="flex gap-2">
               <button
                 onClick={() => window.print()}
-                className="px-2.5 py-1 text-xs border border-slate-300 rounded font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-1"
+                className="px-2.5 py-1 text-xs border border-slate-300 rounded font-semibold text-slate-700 hover:bg-[#FFF7EA] flex items-center gap-1"
               >
                 <Printer className="w-3.5 h-3.5" /> Print
               </button>
               <button
                 onClick={() => window.print()}
-                className="px-2.5 py-1 text-xs bg-[#0A3871] text-white rounded font-semibold hover:bg-[#07264F] flex items-center gap-1"
+                className="px-2.5 py-1 text-xs bg-[#E87516] text-white rounded font-semibold hover:bg-[#C85D00] flex items-center gap-1"
               >
                 <Download className="w-3.5 h-3.5" /> PDF
               </button>
             </div>
           </div>
 
-          <div className="space-y-3 text-xs text-slate-800 leading-relaxed border p-4 bg-slate-50/50 rounded">
+          <div className="space-y-3 text-xs text-slate-800 leading-relaxed border border-[#E2E2E2] p-4 bg-slate-50/50 rounded">
             <p className="font-bold text-red-700">
               URGENT / IMMEDIATE ATTENTION: STATE EMERGENCY OPERATIONS CENTER (SEOC), DEHRADUN & SHIMLA
             </p>
@@ -117,9 +118,9 @@ export const ReportsPage = () => {
             </p>
           </div>
 
-          <div className="pt-2 flex justify-between items-end text-xs text-slate-600 border-t">
+          <div className="pt-2 flex justify-between items-end text-xs text-slate-600 border-t border-[#E2E2E2]">
             <div>
-              <span className="block font-bold">Issued by:</span>
+              <span className="block font-bold text-[#172033]">Issued by:</span>
               <span>National Weather Forecasting Centre (NWFC), New Delhi</span>
             </div>
             <div className="text-right">

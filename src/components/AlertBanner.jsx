@@ -43,7 +43,7 @@ export const AlertBanner = () => {
             activeAlert.severity === 'danger' ? 'text-red-600' : 'text-orange-500'
           }`} />
         </div>
-        <p className="text-[12px] text-slate-800 leading-snug m-0 group-hover:text-blue-800 transition-colors">
+        <p className="text-[12px] text-slate-800 leading-snug m-0 group-hover:text-[#C85D00] transition-colors">
           <strong className={`${
             activeAlert.severity === 'danger' ? 'text-red-700' : 'text-orange-700'
           } font-bold mr-1`}>
@@ -56,7 +56,7 @@ export const AlertBanner = () => {
       {/* Action Link */}
       <Link
         to="/alerts"
-        className="inline-flex items-center gap-1 text-[12px] font-bold text-[#0A3871] hover:underline shrink-0 self-end sm:self-center whitespace-nowrap ml-4"
+        className="inline-flex items-center gap-1 text-[12px] font-bold text-[#C85D00] hover:underline shrink-0 self-end sm:self-center whitespace-nowrap ml-4"
       >
         View All Alerts
         <ArrowRight className="w-3.5 h-3.5" />

@@ -19,10 +19,13 @@ const getSourceIcon = (id) => {
 
 export const DataSources = ({ sources = mockDataSources }) => {
   return (
-    <div className="bg-white border border-slate-200 rounded p-3 shadow-gov-sm flex flex-col justify-between h-full">
+    <div className="bg-white border border-[#E2E2E2] rounded p-3 shadow-gov-sm flex flex-col justify-between h-full">
       {/* Header */}
-      <div className="border-b border-slate-200 pb-1.5 mb-1.5">
-        <h3 className="text-xs sm:text-[13px] font-bold text-slate-900 m-0">Data Sources</h3>
+      <div className="border-b border-[#E2E2E2] pb-1.5 mb-1.5">
+        <h3 className="text-xs sm:text-[13px] font-bold text-[#172033] m-0 flex items-center gap-1.5">
+          <span className="w-1 h-3.5 bg-[#E87516] rounded-sm inline-block"></span>
+          <span>Data Sources</span>
+        </h3>
       </div>
 
       {/* Source Items */}
@@ -55,7 +58,7 @@ export const DataSources = ({ sources = mockDataSources }) => {
       <div className="pt-1.5 border-t border-slate-100 mt-2">
         <Link
           to="/data-layers"
-          className="inline-flex items-center gap-1 text-[11px] font-bold text-[#0A3871] hover:text-blue-800 hover:underline"
+          className="inline-flex items-center gap-1 text-[11px] font-bold text-[#C85D00] hover:text-[#A84A00] hover:underline"
         >
           <span>View All Sources</span>
           <ArrowRight className="w-3 h-3" />

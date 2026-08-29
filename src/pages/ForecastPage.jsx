@@ -14,10 +14,11 @@ export const ForecastPage = () => {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="bg-white border border-slate-200 rounded p-3.5 flex flex-wrap items-center justify-between gap-3 shadow-gov-sm">
+      <div className="bg-white border border-[#E2E2E2] rounded p-3.5 flex flex-wrap items-center justify-between gap-3 shadow-gov-sm">
         <div>
-          <h2 className="text-base font-bold text-[#0A3871] m-0 flex items-center gap-2">
-            <CloudSun className="w-5 h-5 text-blue-700" />
+          <h2 className="text-base font-bold text-[#172033] m-0 flex items-center gap-2">
+            <span className="w-1.5 h-4.5 bg-[#E87516] rounded-sm inline-block"></span>
+            <CloudSun className="w-5 h-5 text-[#E87516]" />
             Atmospheric Diagnostics & Convective Nowcast Profiles
           </h2>
           <p className="text-xs text-slate-500 mt-0.5 m-0">

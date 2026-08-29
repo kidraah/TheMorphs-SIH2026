@@ -2,11 +2,13 @@ import React from 'react';
 
 export const PrecipitationNowcast = () => {
   return (
-    <div className="bg-white border border-slate-200 rounded p-3 shadow-gov-sm flex flex-col justify-between h-full">
+    <div className="bg-white border border-[#E2E2E2] rounded p-3 shadow-gov-sm flex flex-col justify-between h-full">
       {/* Header */}
-      <div className="border-b border-slate-200 pb-1.5 mb-2">
-        <h3 className="text-xs sm:text-[13px] font-bold text-slate-900 m-0">
-          Precipitation Nowcast <span className="text-slate-500 font-normal text-xs">(mm)</span>
+      <div className="border-b border-[#E2E2E2] pb-1.5 mb-2">
+        <h3 className="text-xs sm:text-[13px] font-bold text-[#172033] m-0 flex items-center gap-1.5">
+          <span className="w-1 h-3.5 bg-[#E87516] rounded-sm inline-block"></span>
+          <span>Precipitation Nowcast</span>
+          <span className="text-slate-500 font-normal text-xs">(mm)</span>
         </h3>
       </div>
 

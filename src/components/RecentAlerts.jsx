@@ -7,10 +7,13 @@ export const RecentAlerts = () => {
   const { alerts, setSelectedAlert } = useAppStore();
 
   return (
-    <div className="bg-white border border-slate-200 rounded p-3 shadow-gov-sm flex flex-col justify-between h-full">
+    <div className="bg-white border border-[#E2E2E2] rounded p-3 shadow-gov-sm flex flex-col justify-between h-full">
       {/* Header */}
-      <div className="border-b border-slate-200 pb-1.5 mb-2">
-        <h3 className="text-xs sm:text-[13px] font-bold text-slate-900 m-0">Recent Alerts</h3>
+      <div className="border-b border-[#E2E2E2] pb-1.5 mb-2">
+        <h3 className="text-xs sm:text-[13px] font-bold text-[#172033] m-0 flex items-center gap-1.5">
+          <span className="w-1 h-3.5 bg-[#E87516] rounded-sm inline-block"></span>
+          <span>Recent Alerts</span>
+        </h3>
       </div>
 
       {/* Alert Items List */}
@@ -19,7 +22,7 @@ export const RecentAlerts = () => {
           <div
             key={item.id}
             onClick={() => setSelectedAlert(item)}
-            className="flex items-start justify-between gap-2 p-1 rounded hover:bg-slate-50 transition-colors cursor-pointer"
+            className="flex items-start justify-between gap-2 p-1 rounded hover:bg-[#FFF7EA] transition-colors cursor-pointer"
             title="Click to view full bulletin details"
           >
             <div className="flex items-start gap-1.5 min-w-0">
@@ -33,7 +36,7 @@ export const RecentAlerts = () => {
                 }`}
               />
               <div className="min-w-0">
-                <span className="text-[11.5px] font-bold text-slate-900 block truncate leading-tight">
+                <span className="text-[11.5px] font-bold text-[#172033] block truncate leading-tight">
                   {item.type}
                 </span>
                 <span className="text-[10px] text-slate-500 block truncate leading-tight">
@@ -52,7 +55,7 @@ export const RecentAlerts = () => {
       <div className="pt-1.5 border-t border-slate-100 mt-2">
         <Link
           to="/alerts"
-          className="inline-flex items-center gap-1 text-[11px] font-bold text-[#0A3871] hover:text-blue-800 hover:underline"
+          className="inline-flex items-center gap-1 text-[11px] font-bold text-[#C85D00] hover:text-[#A84A00] hover:underline"
         >
           <span>View All Alerts</span>
           <ArrowRight className="w-3 h-3" />

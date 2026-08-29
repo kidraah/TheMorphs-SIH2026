@@ -8,20 +8,20 @@ import AlertDetailModal from '../components/AlertDetailModal';
 
 export const MainLayout = () => {
   return (
-    <div className="min-h-screen bg-[#F4F6F9] flex flex-col">
+    <div className="min-h-screen bg-[#FFFFFF] flex flex-col">
       {/* Top Government Header */}
       <Header />
 
-      {/* Navy Blue Nav + Sub-Header Title Banner */}
+      {/* Saffron Nav + Sub-Header Title Banner */}
       <Navbar />
 
       {/* Portal Body: Sidebar + Main Content Column */}
-      <div className="flex flex-1 overflow-hidden border-x border-slate-200 max-w-[1720px] w-full mx-auto bg-[#F4F6F9]">
+      <div className="flex flex-1 overflow-hidden border-x border-[#E2E2E2] max-w-[1720px] w-full mx-auto bg-[#FFFFFF]">
         {/* Fixed-width Left Sidebar */}
         <Sidebar />
 
         {/* Scrollable Main Content Area */}
-        <main className="flex-1 overflow-y-auto p-3 sm:p-3.5 min-w-0">
+        <main className="flex-1 overflow-y-auto p-3 sm:p-3.5 min-w-0 bg-[#FAFAFA]">
           <Outlet />
         </main>
       </div>

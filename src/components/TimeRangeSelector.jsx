@@ -28,7 +28,7 @@ export const TimeRangeSelector = () => {
             onClick={() => setSelectedTimeRange(opt.id)}
             className={`py-1 text-[11px] font-semibold rounded transition-all text-center ${
               selectedTimeRange === opt.id
-                ? 'bg-[#0A3871] text-white shadow-sm font-bold'
+                ? 'bg-[#E87516] text-white shadow-sm font-bold'
                 : 'bg-white/80 text-slate-700 hover:bg-white hover:text-slate-900 border border-slate-200/60'
             }`}
           >

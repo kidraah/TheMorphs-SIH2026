@@ -17,7 +17,7 @@ export const RegionSelector = () => {
         <select
           value={selectedRegion}
           onChange={(e) => setSelectedRegion(e.target.value)}
-          className="w-full bg-white text-xs font-medium text-slate-800 border border-slate-300 rounded py-1.5 pl-2.5 pr-7 appearance-none cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-500 shadow-sm"
+          className="w-full bg-white text-xs font-medium text-slate-800 border border-slate-300 rounded py-1.5 pl-2.5 pr-7 appearance-none cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#E87516] shadow-sm"
         >
           {regions.map((r) => (
             <option key={r.id} value={r.id}>

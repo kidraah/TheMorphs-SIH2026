@@ -6,13 +6,14 @@ export const AboutSystemPage = () => {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="bg-white border border-slate-200 rounded p-4 flex flex-wrap items-center justify-between gap-3 shadow-gov-sm">
+      <div className="bg-white border border-[#E2E2E2] rounded p-4 flex flex-wrap items-center justify-between gap-3 shadow-gov-sm">
         <div>
           <span className="text-[10.5px] font-bold text-red-700 uppercase tracking-widest block">
             Smart India Hackathon (SIH 2026) • Problem Statement SIH26077
           </span>
-          <h2 className="text-base sm:text-lg font-bold text-[#0A3871] mt-0.5 m-0 flex items-center gap-2">
-            <Info className="w-5 h-5 text-blue-700" />
+          <h2 className="text-base sm:text-lg font-bold text-[#172033] mt-0.5 m-0 flex items-center gap-2">
+            <span className="w-1.5 h-4.5 bg-[#E87516] rounded-sm inline-block"></span>
+            <Info className="w-5 h-5 text-[#E87516]" />
             AI-Driven Hyper-Local Early Warning System (IMD / MoES)
           </h2>
           <p className="text-xs text-slate-600 mt-1 m-0">
@@ -24,9 +25,9 @@ export const AboutSystemPage = () => {
       {/* Grid of details */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Card 1: Mandate & Problem Scope */}
-        <div className="bg-white border border-slate-200 rounded p-4 shadow-gov-sm space-y-2.5">
-          <div className="flex items-center gap-2 border-b pb-2 text-[#0A3871]">
-            <Award className="w-4 h-4 text-blue-700" />
+        <div className="bg-white border border-[#E2E2E2] rounded p-4 shadow-gov-sm space-y-2.5">
+          <div className="flex items-center gap-2 border-b border-[#E2E2E2] pb-2 text-[#172033]">
+            <Award className="w-4 h-4 text-[#E87516]" />
             <h3 className="text-xs font-bold uppercase tracking-wider m-0">Mission & Problem Scope</h3>
           </div>
           <p className="text-xs text-slate-700 leading-relaxed">
@@ -38,8 +39,8 @@ export const AboutSystemPage = () => {
         </div>
 
         {/* Card 2: AI & Nowcasting Engine */}
-        <div className="bg-white border border-slate-200 rounded p-4 shadow-gov-sm space-y-2.5">
-          <div className="flex items-center gap-2 border-b pb-2 text-[#0A3871]">
+        <div className="bg-white border border-[#E2E2E2] rounded p-4 shadow-gov-sm space-y-2.5">
+          <div className="flex items-center gap-2 border-b border-[#E2E2E2] pb-2 text-[#172033]">
             <Cpu className="w-4 h-4 text-purple-700" />
             <h3 className="text-xs font-bold uppercase tracking-wider m-0">AI Architecture & XAI</h3>
           </div>
@@ -57,8 +58,8 @@ export const AboutSystemPage = () => {
         </div>
 
         {/* Card 3: Institutional Partner Network */}
-        <div className="bg-white border border-slate-200 rounded p-4 shadow-gov-sm space-y-2.5">
-          <div className="flex items-center gap-2 border-b pb-2 text-[#0A3871]">
+        <div className="bg-white border border-[#E2E2E2] rounded p-4 shadow-gov-sm space-y-2.5">
+          <div className="flex items-center gap-2 border-b border-[#E2E2E2] pb-2 text-[#172033]">
             <ShieldCheck className="w-4 h-4 text-emerald-700" />
             <h3 className="text-xs font-bold uppercase tracking-wider m-0">Institutional Collaboration</h3>
           </div>

@@ -15,9 +15,10 @@ export const AlertsPage = () => {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="bg-white border border-slate-200 rounded p-3.5 flex flex-wrap items-center justify-between gap-3 shadow-gov-sm">
+      <div className="bg-white border border-[#E2E2E2] rounded p-3.5 flex flex-wrap items-center justify-between gap-3 shadow-gov-sm">
         <div>
-          <h2 className="text-base font-bold text-[#0A3871] m-0 flex items-center gap-2">
+          <h2 className="text-base font-bold text-[#172033] m-0 flex items-center gap-2">
+            <span className="w-1.5 h-4.5 bg-[#E87516] rounded-sm inline-block"></span>
             <Bell className="w-5 h-5 text-red-600" />
             Active Warning Bulletins & Nowcast Alerts
           </h2>
@@ -33,12 +34,12 @@ export const AlertsPage = () => {
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-2 border-b border-slate-200 bg-white px-3 pt-2 rounded-t text-xs">
+      <div className="flex items-center gap-2 border-b border-[#E2E2E2] bg-white px-3 pt-2 rounded-t text-xs">
         <button
           onClick={() => setFilterSeverity('all')}
           className={`pb-2 px-2 font-bold border-b-2 transition-all ${
             filterSeverity === 'all'
-              ? 'border-[#0A3871] text-[#0A3871]'
+              ? 'border-[#E87516] text-[#C85D00]'
               : 'border-transparent text-slate-500 hover:text-slate-800'
           }`}
         >

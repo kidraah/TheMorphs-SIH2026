@@ -42,7 +42,7 @@ export const AlertDetailModal = () => {
         <div className="p-4 space-y-4 overflow-y-auto max-h-[70vh] text-xs">
           {/* Main Summary */}
           <div className="bg-slate-50 border border-slate-200 rounded p-3">
-            <p className="text-[13px] font-extrabold text-[#0A3871]">
+            <p className="text-[13px] font-extrabold text-[#C85D00]">
               {selectedAlert.type}
             </p>
             <p className="text-slate-500 font-semibold mt-0.5 flex items-center gap-1">

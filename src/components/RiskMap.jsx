@@ -265,7 +265,7 @@ export const RiskMap = ({ height = 'h-[520px]', showControls = true }) => {
     // Update global store with selected district
     setSelectedDistrict(d);
 
-    const alertColor = ALERT_COLOR[d.alert] || '#0A3871';
+    const alertColor = ALERT_COLOR[d.alert] || '#E87516';
     const riskColor  = RISK_STYLE[d.riskLevel]?.fill || '#16A34A';
 
     const popupContent = `
@@ -331,19 +331,20 @@ export const RiskMap = ({ height = 'h-[520px]', showControls = true }) => {
     : (mapLayers.risk ? 'Risk Level' : null);
 
   return (
-    <div className="bg-white border border-slate-200 rounded shadow-sm overflow-hidden flex flex-col h-full">
+    <div className="bg-white border border-[#E2E2E2] rounded shadow-sm overflow-hidden flex flex-col h-full">
       {/* ── Card Header ──────────────────────────────────────────── */}
-      <div className="px-3 py-2 border-b border-slate-200 flex items-center justify-between bg-white shrink-0">
+      <div className="px-3 py-2 border-b border-[#E2E2E2] flex items-center justify-between bg-white shrink-0">
         <div className="flex items-center gap-2">
-          <h2 className="text-[13px] font-bold text-slate-900 m-0 leading-none">
-            Live Risk Map
+          <h2 className="text-[13px] font-bold text-[#172033] m-0 leading-none flex items-center gap-1.5">
+            <span className="w-1 h-3.5 bg-[#E87516] rounded-sm inline-block"></span>
+            <span>Live Risk Map</span>
           </h2>
           <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded text-emerald-700 bg-emerald-50 border border-emerald-200">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse inline-block"></span>
             LIVE
           </span>
           {activeLayerLabel && (
-            <span className="text-[10px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded">
+            <span className="text-[10px] font-semibold text-[#C85D00] bg-[#FFF1DD] border border-orange-200 px-2 py-0.5 rounded">
               Layer: {activeLayerLabel}
             </span>
           )}
@@ -401,13 +402,13 @@ export const RiskMap = ({ height = 'h-[520px]', showControls = true }) => {
             <div className="relative">
               <button title="Layer Controls" onClick={() => setShowLayerPanel((v) => !v)}
                 className={`w-7 h-7 border rounded shadow flex items-center justify-center transition-colors ${
-                  showLayerPanel ? 'bg-[#0A3871] text-white border-[#0A3871]' : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-300'
+                  showLayerPanel ? 'bg-[#E87516] text-white border-[#E87516]' : 'bg-white hover:bg-[#FFF7EA] text-slate-700 border-slate-300'
                 }`}>
                 <LayersIcon className="w-3.5 h-3.5" />
               </button>
 
               {showLayerPanel && (
-                <div className="absolute left-9 top-0 bg-white border border-slate-200 shadow-xl rounded z-[600] w-56 text-xs">
+                <div className="absolute left-9 top-0 bg-white border border-[#E2E2E2] shadow-xl rounded z-[600] w-56 text-xs">
                   {/* Base Map Section */}
                   <div className="px-3 py-2 border-b border-slate-100">
                     <p className="text-[10px] font-bold text-slate-400 uppercase mb-1.5 tracking-wide">Base Map</p>
@@ -418,7 +419,7 @@ export const RiskMap = ({ height = 'h-[520px]', showControls = true }) => {
                     ].map(({ id, label }) => (
                       <label key={id} className="flex items-center gap-2 cursor-pointer py-0.5">
                         <input type="radio" name="basemap" value={id} checked={basemap === id}
-                          onChange={() => setBasemap(id)} className="accent-[#0A3871]" />
+                          onChange={() => setBasemap(id)} className="accent-[#E87516]" />
                         <span className="text-slate-700">{label}</span>
                       </label>
                     ))}
@@ -430,7 +431,7 @@ export const RiskMap = ({ height = 'h-[520px]', showControls = true }) => {
                     {MAP_LAYER_DEFINITIONS.map(({ key, label, icon }) => (
                       <label key={key} className="flex items-center gap-2 cursor-pointer py-0.5">
                         <input type="checkbox" checked={!!mapLayers[key]}
-                          onChange={() => toggleMapLayer(key)} className="rounded accent-[#0A3871]" />
+                          onChange={() => toggleMapLayer(key)} className="rounded accent-[#E87516]" />
                         <LayerIcon iconKey={icon} className="w-3.5 h-3.5 text-slate-500" />
                         <span className="text-slate-700">{label}</span>
                       </label>
@@ -441,7 +442,7 @@ export const RiskMap = ({ height = 'h-[520px]', showControls = true }) => {
                   <div className="px-3 py-2">
                     <label className="flex items-center gap-2 cursor-pointer py-0.5">
                       <input type="checkbox" checked={showBorders}
-                        onChange={toggleBorders} className="rounded accent-[#0A3871]" />
+                        onChange={toggleBorders} className="rounded accent-[#E87516]" />
                       <span className="text-slate-700">District Boundaries</span>
                     </label>
                   </div>

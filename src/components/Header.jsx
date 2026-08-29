@@ -35,7 +35,7 @@ export const Header = () => {
               <div className="font-bold text-slate-900 text-[14px] leading-tight">
                 भारत मौसम विज्ञान विभाग
               </div>
-              <div className="font-extrabold text-[#0A3871] text-[12px] tracking-wide uppercase mt-0.5">
+              <div className="font-extrabold text-[#E87516] text-[12px] tracking-wide uppercase mt-0.5">
                 INDIA METEOROLOGICAL DEPARTMENT
               </div>
             </div>
