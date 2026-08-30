@@ -166,3 +166,66 @@ def test_missing_datasets_are_reported_not_silently_skipped():
         res = verify_against_local(s.url, SCAN, KEEP + ["IMG_NOT_A_CHANNEL"])
     assert res["passed"], res["mismatches"]
     assert res["datasets_checked"] == len(KEEP)
+
+
+class _Status:
+    """A server that answers with a status and a short body, like an auth wall."""
+    def __init__(self, code, body=b"Unauthorized"):
+        self.code, self.body = code, body
+
+    def __enter__(self):
+        code, body = self.code, self.body
+
+        class H(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_HEAD(self):
+                self.send_response(code)
+                self.end_headers()
+
+            def do_GET(self):
+                self.send_response(code)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+        self.httpd = HTTPServer(("127.0.0.1", 0), H)
+        self.url = f"http://127.0.0.1:{self.httpd.server_address[1]}/x.h5"
+        threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
+        return self
+
+    def __exit__(self, *e):
+        self.httpd.shutdown()
+        self.httpd.server_close()
+
+
+def test_auth_failure_is_inconclusive_not_a_negative():
+    """A 401 says the server refused YOU, not that it refused Range.
+
+    The first version conflated them: an unauthenticated MOSDAC probe
+    returned 401 with a 59-byte body and was reported as 'Range NOT usable',
+    which would have justified provisioning 3.4 TB of disk on an auth error.
+    """
+    for code in (401, 403):
+        with _Status(code) as s:
+            r = probe_range_support(s.url)
+        assert not r.conclusive, r.report()
+        assert not r.supported
+        assert "INCONCLUSIVE" in r.report()
+        assert "says NOTHING about Range" in r.report()
+
+
+def test_a_short_body_with_200_is_also_inconclusive():
+    """A login page served with 200 is not a file."""
+    with _Status(200, b"<html>Please log in</html>") as s:
+        r = probe_range_support(s.url)
+    assert not r.conclusive and "not a file" in r.reason
+
+
+@needs_scan
+def test_a_real_refusal_is_still_reported_as_conclusive():
+    """The genuine negative must not be softened into 'inconclusive'."""
+    with Server(SCAN, False) as s:
+        r = probe_range_support(s.url)
+    assert r.conclusive and not r.supported
+    assert "RANGE NOT USABLE" in r.report()

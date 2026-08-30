@@ -93,6 +93,15 @@ def main():
     result = {"url_host": a.url.split("/")[2] if "//" in a.url else "",
               "range": sup.__dict__}
 
+    if not sup.conclusive:
+        print("\n  INCONCLUSIVE -- the probe never reached a file body, so it "
+              "says nothing about Range.")
+        print("  Do NOT size storage on this. Put MOSDAC_TOKEN (or a working "
+              "session) in the gitignored .env and re-run.")
+        Path(a.out).parent.mkdir(parents=True, exist_ok=True)
+        Path(a.out).write_text(json.dumps(result, indent=2, default=str))
+        return 3
+
     if not sup.supported:
         full = a.scans * 448.0 / 1024
         print(f"\n  Range NOT usable. The archive stays at {full:,.0f} GB "

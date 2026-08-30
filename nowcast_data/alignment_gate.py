@@ -300,3 +300,76 @@ def scene_cellularity(rain_mmhr, lats=None, lons=None, box=None) -> dict:
 def rank_candidate_scenes(scored: dict, n: int = 6) -> list:
     """Best n candidates by cellularity. `scored` maps label -> scene_cellularity()."""
     return sorted(scored.items(), key=lambda kv: -kv[1]["score"])[:n]
+
+
+# ---------------------------------------------------------------------------
+# Pooling: 21 weak measurements are not 21 argmaxes
+# ---------------------------------------------------------------------------
+#
+# Measured on 2025-08-01: 21 scenes, every one with >70,000 cold and >45,000
+# wet pixels, and NOT ONE identifiable -- peak/zero median 1.017 against a
+# 1.15 bar. Monsoon stratiform overlaps at any small shift, so each scene's
+# agreement surface is flat, exactly as this module's scene-selection note
+# predicted.
+#
+# The argmaxes nonetheless cluster: mean |dy| = 1.62 where a flat surface
+# searched over +/-12 px would give ~6. That is suggestive and it is NOT a
+# result -- reading direction off surfaces the gate calls unidentifiable is
+# how this project previously talked itself into an anvil-advection story
+# that ERA5 then refuted.
+#
+# The right response is a better statistic, not a looser threshold. A
+# constant registration offset is COMMON to every scene, so the surfaces can
+# be summed: 21 x ~100k cold pixels is ~2M, and a real common offset
+# reinforces while storm-motion scatter does not. Each surface is divided by
+# its own zero-offset score first, because scenes differ in absolute IoU
+# (0.21 to 0.44 here) and summing raw would just weight the wettest scenes.
+#
+# WHAT POOLING CAN AND CANNOT RECOVER. It recovers the CONSTANT component
+# only. Parallax varies with tan(zenith), so pooling scenes of differing
+# geometry smears it into the constant. Report it as a constant estimate and
+# keep the regression for the parallax term.
+
+def pooled_offset(results, grid_km: float = 4.0) -> dict:
+    """Sum per-scene agreement surfaces and locate the common offset."""
+    surfaces = [np.asarray(r.scores, dtype=np.float64) for r in results]
+    if not surfaces:
+        return {"identifiable": False, "reason": "no surfaces"}
+    if len({s.shape for s in surfaces}) != 1:
+        raise ValueError("surfaces must share a shape (same max_offset)")
+
+    n = surfaces[0].shape[0]
+    c = n // 2
+    norm = []
+    for s in surfaces:
+        z = s[c, c]
+        if z > 0:
+            norm.append(s / z)
+    if not norm:
+        return {"identifiable": False, "reason": "every zero-offset score was 0"}
+
+    pooled = np.mean(norm, axis=0)
+    k = int(np.argmax(pooled))
+    iy, ix = divmod(k, n)
+    peak, zero = float(pooled[iy, ix]), float(pooled[c, c])
+    ratio = peak / zero if zero > 0 else float("nan")
+
+    # A pooled surface is smoother, so the bar should not be the per-scene
+    # one. What matters is whether the peak stands above the surface's own
+    # roughness: compare the improvement over zero with the spread of the
+    # pooled surface away from the peak.
+    others = np.delete(pooled.ravel(), k)
+    z_score = (peak - others.mean()) / (others.std() or 1e-12)
+
+    return {
+        "dy": iy - c, "dx": ix - c,
+        "offset_km": float(np.hypot(iy - c, ix - c) * grid_km),
+        "peak": peak, "zero": zero, "peak_over_zero": ratio,
+        "z_score": float(z_score),
+        "n_scenes": len(norm),
+        "identifiable": bool(z_score >= 3.0),
+        "reason": ("pooled peak stands %.1f sigma above the surface" % z_score
+                   if z_score >= 3.0 else
+                   "pooled peak is only %.1f sigma above the surface -- still "
+                   "not a measurement" % z_score),
+    }

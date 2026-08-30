@@ -51,16 +51,32 @@ class RangeSupport:
     content_range: str | None = None
     bytes_returned: int | None = None
     content_length: int | None = None
+    # Three outcomes, not two. "The server refused Range" and "the server
+    # refused YOU" are different facts with different consequences, and the
+    # first version collapsed them: an unauthenticated MOSDAC probe returned
+    # 401 with a 59-byte body and was reported as "Range NOT usable", which
+    # would have justified provisioning 3.4 TB of disk on an auth error.
+    # That is instance 6 again -- reading an HTTP status as if it were data.
+    #
+    # Declared LAST on purpose: adding it third silently reassigned every
+    # positional construction in this module (status became a Content-Range
+    # string, and nothing raised).
+    conclusive: bool = True
 
     def report(self) -> str:
-        head = "RANGE SUPPORTED" if self.supported else "RANGE NOT USABLE"
+        head = ("RANGE SUPPORTED" if self.supported else
+                "INCONCLUSIVE" if not self.conclusive else "RANGE NOT USABLE")
         lines = [f"{head}: {self.reason}",
                  f"    advertises Accept-Ranges: {self.advertises_header}",
                  f"    ranged GET status: {self.status} "
                  f"(206 required; 200 means the whole body was sent)",
                  f"    Content-Range: {self.content_range}",
                  f"    bytes returned: {self.bytes_returned}"]
-        if self.advertises_header and not self.supported:
+        if not self.conclusive:
+            lines.append("    !! this says NOTHING about Range support. Do not "
+                         "size storage or plan the archive on it -- re-run "
+                         "authenticated.")
+        if self.advertises_header and not self.supported and self.conclusive:
             lines.append("    !! the server ADVERTISES ranges and does not honour "
                          "them -- naive slicing would look correct and transfer "
                          "the whole file")
@@ -87,6 +103,21 @@ def probe_range_support(url, session=None, probe_len: int = 4096,
     body = r.content
     cr = r.headers.get("Content-Range")
 
+    # Auth and redirect failures are NOT evidence about Range.
+    if r.status_code in (401, 403, 407):
+        return RangeSupport(
+            False,
+            f"{r.status_code} -- authentication required, so nothing was "
+            f"learned about Range. Body was {len(body)} bytes "
+            f"({body[:60]!r}).",
+            adv, r.status_code, cr, len(body), clen, conclusive=False)
+    if r.status_code >= 300 or len(body) < 512:
+        return RangeSupport(
+            False,
+            f"status {r.status_code} with a {len(body)}-byte body -- that is "
+            f"an error or login page, not a file. Nothing was learned about "
+            f"Range.",
+            adv, r.status_code, cr, len(body), clen, conclusive=False)
     if r.status_code != 206:
         return RangeSupport(False,
                             f"ranged GET returned {r.status_code}, not 206 -- "
