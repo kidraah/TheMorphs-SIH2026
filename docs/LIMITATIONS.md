@@ -384,3 +384,40 @@ Two details that are easy to get wrong and are tested:
   20-CN jump in published risk from 0.2 mm of rain five days ago. The
   default interpolates through the class anchors instead, reproducing the
   standard values exactly at the boundaries.
+
+
+## 12. MOSDAC does not subset: 3.4 TB transferred for 117 GB of signal
+
+The archive plan assumed a bounding box in the MOSDAC request produced a
+server-side subset, at ~10% of full-disk area, giving ~43 MB/scan and a
+336 GB archive. **Measured on 702 delivered event files (292 GB): 448 MB per
+scan.** The estimate was low by 10.4x.
+
+Confirmed from the data, not inferred from the size: a delivered file's
+`Latitude` spans -81.04 to +81.04 and `Longitude` -7.15 to +155.15 — the
+full Earth disk from 82E, not an India crop. **The boundingBox is a search
+filter.**
+
+What fills it, by stored bytes in one real file:
+
+| dataset | MB | % of file | used |
+|---|---|---|---|
+| `Longitude_VIS` | 139.1 | 30.8% | no |
+| `Latitude_VIS` | 87.9 | 19.5% | no |
+| `IMG_SWIR` | 86.4 | 19.2% | no |
+| `IMG_VIS` | 80.5 | 17.8% | no |
+| everything else | 57.3 | 12.7% | partly |
+
+The channels the model reads are **19.1 MB, 4.2% of the file**. 95.8% of
+every byte transferred is 1 km VIS/SWIR and their int32 geolocation.
+
+**Consequence, and the mitigation:** transfer is 3.4 TB and is unavoidable
+without server-side subsetting. Storage is not: decoding to the 4 km grid
+and discarding the raw file gives **117 GB** for all six channels. Raw must
+never accumulate — the pipeline has to be streaming, not download-then-process.
+
+**Open:** whether MOSDAC supports HTTP Range requests. HDF5 is a
+random-access format, so a ranged reader could fetch only the needed
+datasets and cut transfer ~20x. Untestable while MOSDAC is down, and worth
+one experiment when it returns — it would take the archive from 3.4 TB to
+under 200 GB.
