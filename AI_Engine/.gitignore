@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# Checkpoints (large binary — stored on HuggingFace)
+checkpoints/*.pth
+
+# Dataset (too large for git — stored locally / on NAS)
+dataset_root/imdaa/
+dataset_root/insat/
+dataset_root/dem/
+CONSOLIDATED_DATA/IMDAA/
+CONSOLIDATED_DATA/INSAT/
+CONSOLIDATED_DATA/CARTODEM/
+
+# Generated outputs
+output/gradcam_*.png
+output/dem_topography.png
+output/imdaa_thermodynamics.png
+output/insat_signatures.png
+output/risk_maps.png
+
+# Node / Frontend
+frontend/TheMorphs-SIH2026/node_modules/
+frontend/TheMorphs-SIH2026/dist/
+scratch/node_modules/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+*.txt
