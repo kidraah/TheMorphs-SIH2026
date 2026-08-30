@@ -44,9 +44,21 @@ class NowcastService:
         # nothing NEW pulls it in behind the model's back.
         self._blocker = guard_model_process(check_absent=False) if guard else None
 
-        # Ingest worker starts before torch here only to keep boot latency
-        # overlapping; correctness no longer depends on the order, which is
-        # the whole point. The reverse order is exercised in the tests.
+        # The worker starts BEFORE torch is imported, and on Linux that is
+        # load-bearing rather than a latency tweak.
+        #
+        # Popen cannot use posix_spawn when pass_fds is given (CPython
+        # subprocess.py guards on `not pass_fds`), so the child is started
+        # with fork+exec. That is SAFE for OpenMP -- the child execs, so the
+        # parent's initialised libomp is replaced, which is exactly what
+        # multiprocessing's fork never does. But fork from a large-RSS
+        # parent is a separate hazard: under strict overcommit
+        # (vm.overcommit_memory=2) the kernel reserves the parent's whole
+        # commit, and a process holding a model plus a CUDA context is many
+        # GB. Forking before the model is loaded keeps that cheap.
+        #
+        # Correctness does not depend on the order -- the reverse is
+        # exercised in the tests -- but memory behaviour does.
         self.worker = IngestWorker().start() if start_worker else None
 
         import torch

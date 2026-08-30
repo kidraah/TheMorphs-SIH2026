@@ -355,3 +355,64 @@ def test_module_level_service_does_not_storm():
     """)
     ok(r, "NO_STORM_OK")
     assert r.stdout.count("WORKER_PID") == 1, r.stdout[-1500:]
+
+
+@needs_scan
+def test_worker_starts_from_a_parent_with_a_large_resident_set():
+    """Linux-relevant: Popen cannot use posix_spawn when pass_fds is given
+    (CPython subprocess.py guards on `not pass_fds`), so the worker is
+    started with fork+exec.
+
+    fork+exec is SAFE for the OpenMP problem -- the child execs, so the
+    parent's initialised libomp is replaced, which is exactly what
+    multiprocessing's fork never does. But fork from a large-RSS parent is
+    its own hazard: under strict overcommit (vm.overcommit_memory=2) the
+    kernel must reserve the parent's whole commit, and a process holding a
+    model plus a CUDA context can be many GB.
+
+    Hence NowcastService starts the worker BEFORE importing torch. That
+    ordering is not a latency optimisation any more; it keeps the fork
+    cheap. This test holds ~2 GB in the parent first.
+    """
+    r = run(f"""
+        import numpy as np
+        ballast = np.ones((2000, 2000, 64), dtype=np.uint8)   # ~2 GB resident
+        ballast[::997] = 7
+        print("RSS_BALLAST", ballast.nbytes // 10**6, "MB")
+
+        from nowcast_serve import IngestWorker
+
+        def main():
+            with IngestWorker() as w:
+                arrays, check = w.ingest({REAL_SCAN!r})
+                assert arrays["TIR1"].shape == (912, 864)
+            print("LARGE_PARENT_OK")
+
+        if __name__ == "__main__":
+            main()
+    """)
+    ok(r, "LARGE_PARENT_OK")
+
+
+def test_the_ingest_side_never_needs_torch():
+    """The fetch/ingest host installs `nowcast-eval[ingest]` -- no torch.
+
+    Not installing torch there does not work around the OpenMP conflict, it
+    removes it: two runtimes cannot collide if only one is present. This
+    asserts the import graph actually allows that, by forbidding torch and
+    then doing a real ingest.
+    """
+    r = run(f"""
+        from nowcast_serve.guards import forbid
+        forbid(("torch",), "the ingest host does not install torch")
+
+        import nowcast_data
+        import nowcast_flood
+        from nowcast_data.insat import ingest_scan
+        from nowcast_data.fetch import Fetcher, verify_hdf5
+        from nowcast_data.ranged import probe_range_support
+        import sys
+        assert "torch" not in sys.modules
+        print("INGEST_WITHOUT_TORCH_OK")
+    """)
+    ok(r, "INGEST_WITHOUT_TORCH_OK")
