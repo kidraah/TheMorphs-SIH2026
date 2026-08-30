@@ -421,3 +421,42 @@ random-access format, so a ranged reader could fetch only the needed
 datasets and cut transfer ~20x. Untestable while MOSDAC is down, and worth
 one experiment when it returns — it would take the archive from 3.4 TB to
 under 200 GB.
+
+
+## 13. HTTP Range is the deciding factor for the archive, and is untested against MOSDAC
+
+The HDF5-layout half is **answered**, on a real delivered scan served over a
+local Range-capable server:
+
+    482.6 MB file, 8 datasets fetched
+    18.9 MB transferred in 111 reads
+    25.5x saving, byte-identical to the local file
+
+So the format cooperates. What is untested is whether MOSDAC's server
+honours `Range`. It decides between:
+
+| | archive | at the measured 7.9 MB/s |
+|---|---|---|
+| Range honoured | **141 GB** | **5.3 h** |
+| not honoured | 3,596 GB | 135.8 h (5.3 days) |
+
+`scripts/probe_mosdac_range.py` runs the moment MOSDAC returns and must run
+**before** any further bulk pull.
+
+**The trap it guards, which is instance 6's shape:** `Accept-Ranges: bytes`
+in a HEAD response is a claim. A server can advertise it and answer ranged
+GETs with `200` and the whole body; naive slicing then returns perfectly
+correct data while transferring everything, so the optimisation appears to
+work and does not exist. The probe requires a real `206`, a consistent
+`Content-Range`, and an exact byte count — and the reader counts bytes
+transferred, so a 1.0x saving is visible rather than silent.
+
+Two independent defences exist, which was worth establishing rather than
+assuming: the probe rejects such a server by design, and fsspec independently
+raises when a seek past 0 returns the whole body. Both are tested against a
+deliberately lying local server.
+
+**Transfer rate is measured, not assumed:** 702 files / 292 GB / 10.5 h =
+**7.9 MB/s**, not the 20 MB/s the plan quoted. One scan failed with a 500 and
+seven `.part` files were left behind, so a resumable, verifying fetcher is a
+requirement rather than a nicety.

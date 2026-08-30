@@ -5,7 +5,7 @@
 > scan and a physics-convention check have both been run against it.**
 
 This is not a precaution against a hypothetical. It is the generalisation of
-**nine** separate instances found on this project, by nine different
+**ten** separate instances found on this project, by nine different
 accidents. None of them raised. All of them produced something a reasonable
 person would accept.
 
@@ -32,7 +32,7 @@ sentinel becomes the strongest signal in the dataset.
 The fifth is worse still: `NaN` filled with `0` does not just add noise, it
 **inverts the physical meaning** of a channel that gates storm initiation.
 
-## Four more, and the pattern widening
+## Five more, and the pattern widening
 
 | # | where | the value | read as | why it was dangerous |
 |---|---|---|---|---|
@@ -40,6 +40,29 @@ The fifth is worse still: `NaN` filled with `0` does not just add noise, it
 | 7 | MERIT Hydro raster | `-9999` at 99.95% of cells | a real elevation | correctly flagged by the sentinel scan; resolved by honouring the declared nodata rather than the array's contents |
 | 8 | `tests/test_service_threads.py` | a green test | "the service works" | the test called `pyresample.kd_tree.resample_nearest` while the service goes through **satpy's** resample path. Green suite, aborting production |
 | 9 | `EvalConfig(geometry="point")` on basins | POD `0.80` | "the flood head is good" | basins have the same array rank as gauges, so it runs. Point geometry counts every element once — right for a gauge, wrong for a basin. **True area-weighted POD: 0.0385** |
+| 10 | ESA WorldCover COG overviews | a valid land-cover class | "the majority class here" | the overviews are **nearest-subsampled, not mode-aggregated**, so a coarse-overview pixel is *one sample*, not a majority. Measured **87.4%** agreement with the true 4 km majority |
+
+### Why 10 is worth the entry even though nothing was invented
+
+Every code an overview returns is a real WorldCover class, so the map looks
+correct at every zoom and no check on values would fire. The error is 12.6%
+of cells and it is **biased, not random**: subsampling under-represents
+*fragmented* classes — built-up and water — because those occur in small
+patches that a sparse sample misses. Those are precisely the classes that
+raise the curve number and mark where flash floods hurt people, so the bias
+runs toward under-forecasting runoff in cities and along drainage lines.
+
+The near-miss is worth recording too. The failure I expected was
+`average`-built overviews, where averaging tree (10) and grass (30) yields
+shrubland (20) — a real class, a plausible map, entirely fabricated. That is
+*not* what WorldCover does (checked: every returned code is in the legend).
+The actual defect was subtler and would have survived a legend check.
+
+**Fix:** read at overview 1/4 (40 m) and compute the majority ourselves.
+Measured agreement with the full-resolution 4 km majority: 1/2 and 1/4 both
+**100.00%**, 1/8 99.31%, direct 1/64 87.4%. Cost is 81 MB/tile instead of
+1296 MB, so the correct answer is also 16x cheaper than the naive-but-safe
+one and 4x dearer than the wrong one.
 
 ### Why 9 is the worst of them
 
@@ -98,7 +121,14 @@ Absolute min/max are contaminated by exactly the artefacts above. Bound p1 and
 p99.9 instead, report the extremes as context, and flag saturation separately.
 See `nowcast_data/insat.py`.
 
-**4. For a new GEOMETRY, not just a new field.** Before scoring anything on
+**4. For a PYRAMID or any downsampled product, ask how the levels were
+built.** Overviews, coarsened grids and pre-aggregated products all answer
+"what is here?" at a resolution you did not choose. Averaging categorical
+data fabricates classes; subsampling it biases against fragmented ones.
+Neither shows up as an invalid value. Compare one tile against a majority
+computed from full resolution before trusting a pyramid level.
+
+**5. For a new GEOMETRY, not just a new field.** Before scoring anything on
 a new spatial unit, ask what one element of it *is*, and whether counting
 elements equally is a physical statement or an accident of array shape. If
 the elements differ in size, population or duration, equal counting is a
