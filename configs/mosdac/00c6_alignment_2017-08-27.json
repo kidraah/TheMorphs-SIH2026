@@ -1,0 +1,26 @@
+{
+  "_purpose": "ALIGNMENT GATE attempt 2, scene 6 of 6. ONE DATE PER FILE: the MOSDAC client reads a single startTime/endTime per config, so six dates in one file became one unbounded search that matched 179,134 granules / 69.70 TB.",
+  "_target_scan_utc": "09:45",
+  "_why_this_scene": "312 separate >=5 mm/hr cores over 1.88% heavy area (score 588), ranked from 1,646 surveyed IMERG granules. Many separate cores give a sharp displacement peak; the broad stratiform of 2025-08-01 gave peak/zero 1.017.",
+  "_imerg": "already on disk in data/imerg_survey -- this date was chosen from it",
+  "_expected_granules": "~48 for the day; keep only the target scan time",
+  "user_credentials": {
+    "username": "",
+    "password": ""
+  },
+  "search_parameters": {
+    "datasetId": "3RIMG_L1B_STD",
+    "startTime": "2017-08-27",
+    "endTime": "2017-08-27",
+    "count": "",
+    "boundingBox": "62.3,5.8,101.7,39.5",
+    "gId": ""
+  },
+  "download_settings": {
+    "download_path": "data/insat/alignment_gate_2",
+    "organize_by_date": true,
+    "skip_user_prompt": false,
+    "generate_error_log": true,
+    "error_log_path": "data/insat/logs"
+  }
+}

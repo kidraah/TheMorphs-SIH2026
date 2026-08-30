@@ -19,7 +19,7 @@ ingest = ["satpy>=0.50", "pyresample>=1.28", "h5netcdf>=1.3",
 era5 = ["xarray>=2024.1", "zarr>=2.16", "gcsfs>=2024.2"]
 flood = ["rasterio>=1.3", "pyproj>=3.6"]
 viz = ["matplotlib>=3.7"]
-dev = ["pytest>=7", "nowcast-eval[model,ingest,era5,flood,viz]"]
+dev = ["pytest>=7", "pytest-timeout>=2.2", "nowcast-eval[model,ingest,era5,flood,viz]"]
 
 [build-system]
 requires = ["setuptools>=68"]
@@ -33,3 +33,14 @@ testpaths = ["tests"]
 # The VIL decode warning is deliberate and asserted by test_unverified_vil_decode_warns;
 # silenced elsewhere so it does not drown the run.
 filterwarnings = ["ignore:channel 'vil' has an unverified decode"]
+
+# A hanging test must FAIL, not block. One subprocess test that binds a local
+# server waited on something that never arrived and cost 25 minutes of wall
+# clock while telling us nothing -- the worst possible outcome, because an
+# indefinite block is not even a signal. 300 s is generous: the slowest
+# legitimate test (real INSAT ingest plus a torch forward) runs in ~30 s.
+#
+# "thread" method, not "signal": the signal method cannot interrupt a
+# blocking read inside subprocess/socket, which is exactly what hung.
+timeout = 300
+timeout_method = "thread"

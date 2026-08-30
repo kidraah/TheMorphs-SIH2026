@@ -460,3 +460,38 @@ deliberately lying local server.
 **7.9 MB/s**, not the 20 MB/s the plan quoted. One scan failed with a 500 and
 seven `.part` files were left behind, so a resumable, verifying fetcher is a
 requirement rather than a nicety.
+
+
+## 13. The archive configs pull 8.2 TB, not 3.4 TB, and cover the wrong years
+
+Three separate mismatches between `scripts/plan_archive.py` and
+`configs/mosdac/16..39_archive_*.json`, found by auditing the configs after a
+different config nearly pulled 69.70 TB. **None had ever been run.**
+
+**1. Continuous, not event-sampled.** The configs are 24 × 15-day windows —
+720 granules and ~315 GB each, **7.5 TB in total**. The plan is 300 active
+days plus 100 sampled null days.
+
+**2. The plan's per-day figure is not downloadable — and it is the third
+instance of one category error.** Auditing found the same confusion in all
+three archive-sizing terms: `boundingBox` (10.4x), the channel list (23.5x),
+and scans-per-day (2.0x). Together, 25x. See DATA_TRUST_RULE.md. MOSDAC's search selects
+by date range and has no time-of-day filter, so the smallest unit is a whole
+day: 48 scans. The plan's "24 scans per active day" is a **keep** decision,
+not a **download** decision. 400 days therefore costs 19,200 scans, not
+8,000:
+
+| | scans | no Range | with Range |
+|---|---|---|---|
+| plan assumed | 8,000 | 3.4 TB | 149 GB |
+| actually downloadable | 19,200 | **8.2 TB** | **358 GB** |
+
+**3. Wrong breadth.** The configs cover 2023–2025 monsoon only. The plan's
+whole rationale for event sampling is independent synoptic episodes spread
+across 2017–2025; three consecutive seasons share setups and buy far fewer
+independent episodes.
+
+**This makes the Range probe decisive rather than merely valuable**: 8.2 TB
+versus 358 GB, and 289 hours versus 13 at the measured 7.9 MB/s. The archive
+configs should not be regenerated until that is known, since the answer
+changes what is worth pulling.

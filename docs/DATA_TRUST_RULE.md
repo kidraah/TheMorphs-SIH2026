@@ -88,6 +88,69 @@ The same bug then had to be closed a second time in `bootstrap.py`, which
 tested `cfg.is_point` and so let basin geometry through to compute FSS over
 basin *index*. A rule enforced in one module is not enforced.
 
+## Instances 10 and 11: the pattern is not about data
+
+| # | where | the value | read as | why it was dangerous |
+|---|---|---|---|---|
+| 10 | ESA WorldCover COG overviews | overview level 1/64 | "the land-cover class here" | the overviews are nearest-SUBSAMPLED, not mode-aggregated, so a pixel is one sample rather than a majority: **87.4% agreement** with the true 4 km majority, biased against fragmented classes like built-up and water |
+| 11 | a generated MOSDAC config | `"startTime": ""` | "unset, ignore this field" | to the search API it is an **unbounded range**. Matched **179,134 granules, 69.70 TB**. Syntactically valid JSON, semantically catastrophic |
+
+### 10 is a near-miss worth more than the catch
+
+The failure *expected* was average-built overviews fabricating shrubland (20)
+from tree (10) and grass (30) — and a legend check finds that instantly,
+because averaged codes mostly fall outside the legend. That check was run and
+**passed**: every returned code was valid.
+
+The actual defect passes a legend check and is invisible without comparing
+against a full-resolution majority. The guard that would have caught the
+failure imagined was not the guard that catches the failure present.
+
+### 11 is the same shape with no data in it
+
+Nothing decoded wrongly. A config file was written whose six dates lived in
+a `_one_job_per_date` key the client never reads, on the assumption it would
+iterate; it takes one `startTime`/`endTime` per file. The real fields were
+left empty, and empty means *everything*.
+
+The only thing between that and a 70 TB pull was the download client
+happening to ask for confirmation. Nothing in this repo's tooling looked at
+the config at all.
+
+`nowcast_data/mosdac_config.py` now estimates before writing and **refuses**
+above a granule limit, so the size is known at generation rather than at the
+download prompt. It is validated against this exact incident: it reproduces
+179,134 granules to within 3.2% and 69.70 TB to within 6.2%.
+
+### The generalisation behind 11: KEEP is not TRANSFER
+
+Auditing for other instances of the same category error found that **every
+one of the three terms sizing the archive had it**, and each was discovered
+separately:
+
+| term | what it is | how it was used | ratio | found by |
+|---|---|---|---|---|
+| `boundingBox` = India | a keep-shaped filter | assumed to subset the download | **10.4x** | measuring 702 delivered files |
+| `channels` = TIR1, WV | keep 2 of 6 | assumed to bound bytes fetched | **23.5x** | measuring dataset sizes in one file |
+| `scans_per_active_day` = 24 | keep 24 of 48 | assumed to bound granules pulled | **2.0x** | auditing the configs |
+
+```
+planned:  8,000 scans x  43 MB =   336 GB
+actual : 19,200 scans x 448 MB = 8,400 GB       25x
+```
+
+Not three mistakes — **one mistake made three times.** Each term describes
+what we want to *end up with*, and each was silently used to size what
+crosses the wire. They are only the same number when the source can subset
+on that axis, and MOSDAC subsets on none of them: not area, not dataset, not
+time of day.
+
+The general form: **a filter expresses intent, not necessarily a reduction in
+what is transferred.** Before a filter is allowed into a size estimate, it
+has to be demonstrated that the *source* honours it — which is a measurement,
+not a reading of the API docs. All three were caught by measurement and none
+by reasoning.
+
 ## The rule, operationally
 
 Before a new source is used for anything:

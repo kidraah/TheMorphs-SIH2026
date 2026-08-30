@@ -48,6 +48,19 @@ BBOX_AREA_FRACTION = 0.10
 ap = argparse.ArgumentParser()
 ap.add_argument("--active-days", type=int, default=300)
 ap.add_argument("--null-days", type=int, default=100)
+# KEEP vs TRANSFER. These two are how many scans we WANT per day. They are
+# NOT how many are downloaded: MOSDAC's search selects by date range and has
+# no time-of-day filter, so the smallest downloadable unit is a whole day --
+# all 48 scans. Sizing the pull from these numbers is a category error, and
+# it is the same one made by `boundingBox` (a keep-shaped filter assumed to
+# subset the transfer, measured 10.4x low) and by the channel list (2 of 6
+# channels assumed to bound bytes fetched, measured 23.5x low).
+#
+# One category error, three terms, compounding to 25x:
+#     planned:  8,000 scans x  43 MB =   336 GB
+#     actual : 19,200 scans x 448 MB = 8,400 GB
+SCANS_PER_DAY_DOWNLOADED = 48
+
 ap.add_argument("--scans-per-active-day", type=int, default=24,
                 help="30-min cadence over a 12h convective window; 3DR scans :15 and :45 so 48/day is available if wanted")
 ap.add_argument("--scans-per-null-day", type=int, default=8)
@@ -97,6 +110,18 @@ print("  is deliberate and documented so the base rate stays honest.")
 # ---------------------------------------------------------------------------
 # Transfer is not storage. Decode-and-discard separates them.
 # ---------------------------------------------------------------------------
+print("\n" + "=" * 66)
+print("KEEP vs TRANSFER -- the day granularity")
+print("=" * 66)
+dl_scans = (a.active_days + a.null_days) * SCANS_PER_DAY_DOWNLOADED
+print(f"  scans we want to KEEP:      {tot_scans:>8,}")
+print(f"  scans we must DOWNLOAD:     {dl_scans:>8,}  "
+      f"({a.active_days + a.null_days} days x {SCANS_PER_DAY_DOWNLOADED}/day)")
+print(f"  MOSDAC has no time-of-day filter, so a day is the smallest unit.")
+print(f"  Sizing the pull from the keep figure understates it "
+      f"{dl_scans/max(tot_scans,1):.1f}x.")
+tot_scans = dl_scans
+
 print("\n" + "=" * 66)
 print("TRANSFER vs STORAGE")
 print("=" * 66)

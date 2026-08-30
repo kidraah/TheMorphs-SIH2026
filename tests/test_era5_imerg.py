@@ -3,6 +3,8 @@
 The ERA5 tests that touch the network are skipped when it is unavailable;
 everything else runs offline.
 """
+import os
+
 import numpy as np
 import pytest
 
@@ -78,17 +80,46 @@ def test_cin_coverage_is_not_held_to_the_normal_bar():
 # --------------------------------------------------------------------------
 
 def _has_network():
+    """Can we actually READ a chunk, not merely open the metadata?
+
+    The first version called `era5.open_store()` and stopped there. Opening
+    the Zarr metadata is a few small object reads and succeeds even when the
+    bucket is effectively unreachable; the tests then read a data chunk,
+    which blocked forever. The suite hung for 25 minutes and reported
+    nothing -- an indefinite block is not even a failure signal.
+
+    Same shape as the test_service_threads gap: the guard exercised a
+    DIFFERENT operation from the code it was guarding, so it passed while
+    the real path hung. So this reads one scalar, under a deadline.
+    """
+    if not os.environ.get("NOWCAST_NETWORK_TESTS"):
+        return False
+    import concurrent.futures as cf
+
+    def probe():
+        ds = era5.open_store()
+        v = next(iter(era5.REQUIRED_VARS)) if hasattr(era5, "REQUIRED_VARS") \
+            else list(ds.data_vars)[0]
+        return float(ds[v].isel({d: 0 for d in ds[v].dims}).values)
+
     try:
-        era5.open_store()
+        with cf.ThreadPoolExecutor(max_workers=1) as ex:
+            ex.submit(probe).result(timeout=30)
         return True
     except Exception:
         return False
 
 
-network = pytest.mark.skipif(not _has_network(), reason="ARCO-ERA5 unreachable")
+# Network tests are OPT-IN: NOWCAST_NETWORK_TESTS=1. A unit suite that
+# depends on a live GCS bucket is not a unit suite, and its failure mode
+# here was a hang rather than a red test.
+network = pytest.mark.skipif(
+    not _has_network(),
+    reason="ARCO-ERA5 not readable (set NOWCAST_NETWORK_TESTS=1 to enable)")
 
 
 @network
+@pytest.mark.timeout(120)
 def test_arco_store_has_every_variable_we_need():
     ds = era5.open_store()
     for v in era5.SINGLE_LEVEL + era5.MULTI_LEVEL:
@@ -96,6 +127,7 @@ def test_arco_store_has_every_variable_we_need():
 
 
 @network
+@pytest.mark.timeout(120)
 def test_real_timestamp_passes_physics():
     f = era5.load_fields("2023-07-09T12:00")
     failures = [(n, d) for n, ok, d in era5.check_physics(f) if not ok]
@@ -105,6 +137,7 @@ def test_real_timestamp_passes_physics():
 
 
 @network
+@pytest.mark.timeout(120)
 def test_cin_undefined_tracks_low_cape_on_real_data():
     """The evidence that CIN NaN means 'no parcel' rather than 'missing'."""
     f = era5.load_fields("2023-07-09T12:00")
@@ -222,6 +255,7 @@ def test_reversed_longitude_bounds_are_rejected():
 
 
 @network
+@pytest.mark.timeout(120)
 def test_verified_conventions_still_hold():
     """Pins every convention checked against ERA5 docs AND monsoon physics.
     If ARCO ever changes one of these, this fails instead of the model
