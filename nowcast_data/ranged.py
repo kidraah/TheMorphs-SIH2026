@@ -100,8 +100,14 @@ def probe_range_support(url, session=None, probe_len: int = 4096,
     end = offset + probe_len - 1
     r = s.get(url, headers={"Range": f"bytes={offset}-{end}"},
               timeout=120, stream=True)
-    body = r.content
     cr = r.headers.get("Content-Range")
+    # Read only what was asked for and CLOSE. If the server ignores Range it
+    # answers with the whole body, and `r.content` would quietly pull a
+    # 448 MB scan to run a 4 KB probe -- turning a diagnostic into a transfer.
+    try:
+        body = next(r.iter_content(chunk_size=probe_len + 1), b"")
+    finally:
+        r.close()
 
     # Auth and redirect failures are NOT evidence about Range.
     if r.status_code in (401, 403, 407):

@@ -495,3 +495,64 @@ independent episodes.
 versus 358 GB, and 289 hours versus 13 at the measured 7.9 MB/s. The archive
 configs should not be regenerated until that is known, since the answer
 changes what is worth pulling.
+
+
+## 14. RESOLVED: MOSDAC honours Range. 8.2 TB becomes 360 GB.
+
+Verified 2026-08-30 against a real scan, authenticated with the flow from the
+user's `mdapi.py` rather than a guessed handshake:
+
+```
+ranged GET status : 206
+Content-Range     : bytes 1024-5119/433102501
+bytes returned    : 4096
+Accept-Ranges     : NOT ADVERTISED
+```
+
+**The server does not advertise `Accept-Ranges` and honours Range anyway.**
+The probe was built to catch the opposite trap — a server that advertises and
+then sends the whole body — and would have been wrong here in the costly
+direction if it had trusted the HEAD header. It verifies with a real ranged
+GET instead, which is the only reason this came back correct.
+
+End-to-end, 12 datasets read over Range and compared byte-for-byte against
+the same file on disk:
+
+| | |
+|---|---|
+| byte-identical | **12/12 datasets, zero mismatches** |
+| transferred | 31.0 MB |
+| whole file | 433.1 MB |
+| saving | **14.0x** (7.2% fetched) |
+
+**Geolocation is bit-identical across scans** (checked on four 3RIMG files
+spanning 2017-2025), so it is fetched once per satellite rather than 19,200
+times: 562 GB becomes 360 GB.
+
+### This inverts the channel decision (LIMITATIONS 12)
+
+Keeping all six channels was free insurance *while transfer was fixed at
+448 MB*. It is not free now:
+
+| | transfer | at 7.9 MB/s |
+|---|---|---|
+| IR only (TIR1, TIR2, MIR, WV) + geolocation once | **360 GB** | **13 h** |
+| adding VIS/SWIR and their int32 geolocation | 8,200 GB | 289 h |
+
+VIS and SWIR are 1 km and, with their int32 geolocation, 95% of every file.
+They are also day-only while the product must work at night. And the
+insurance argument is weak now: with Range, wanting `IMG_VIS` later is a
+targeted re-fetch of that dataset, not a re-download of the archive.
+
+`InsatCacheConfig` therefore fetches the four IR channels.
+**Fingerprint changes `a8d4085edddad2de` -> `86fae373df9155e7`**, cache
+197 GB at 19,200 scans.
+
+### Still unknown, and now possibly the binding constraint
+
+`mdapi.py` handles HTTP 429 with two types, `minute_limit` (sleep 20 and
+retry) and `daily_limit` (fatal -- it logs out and exits). **There is a daily
+cap and its value is not in the client**; it comes back in the 429 body.
+360 GB at 7.9 MB/s is 13 hours of transfer, but at N files/day the schedule
+could be far longer, and 19,200 files is a lot of files. Watch for the first
+`daily_limit` message and read the number out of it.

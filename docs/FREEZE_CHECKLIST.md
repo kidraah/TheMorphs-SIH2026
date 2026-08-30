@@ -6,7 +6,7 @@ not a small fix — it is a 3.4 TB re-download. The enumeration lives in
 `nowcast_train/insat_cache.py` as a hashed dataclass rather than in this
 document, so a mismatch is refused rather than remembered.
 
-Current default fingerprint: **`a8d4085edddad2de`** (asserted in the tests;
+Current default fingerprint: **`86fae373df9155e7`** (was `a8d4085edddad2de` before Range support was verified; see LIMITATIONS 14) (asserted in the tests;
 changing it is a re-ingest and must be deliberate).
 
 ## Ordering — confirmed

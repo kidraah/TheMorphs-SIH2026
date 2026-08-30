@@ -45,6 +45,31 @@ from dataclasses import asdict, dataclass, field
 # paid, so the only question is storage, and storage is cheap.
 ALL_CHANNELS = ("VIS", "SWIR", "MIR", "TIR1", "TIR2", "WV")
 
+# What we actually fetch. RANGE CHANGES THIS DECISION.
+#
+# The earlier reasoning was: every VIS/SWIR byte crosses the wire whether or
+# not it is kept, so keeping all six costs ~47 GB of storage and insures
+# against a 3.4 TB re-download. That was correct WHEN TRANSFER WAS FIXED.
+#
+# MOSDAC honours HTTP Range (verified 2026-08-30 against a real scan: 206,
+# Content-Range bytes 1024-5119/433102501, and a 12-dataset ranged read came
+# back byte-identical to the local copy at 31.0 MB against 433.1 MB). So
+# transfer is no longer already paid, and the asymmetry reverses:
+#
+#     IR only (TIR1, TIR2, MIR, WV) + geolocation once :   360 GB, ~13 h
+#     adding VIS/SWIR and their int32 geolocation      : 8,200 GB, ~289 h
+#
+# VIS and SWIR are 1 km, and with their int32 geolocation they are 95% of
+# every file. They are also day-only, and the product must work at night.
+# The insurance argument is weak now too: with Range, wanting IMG_VIS later
+# is a targeted re-fetch of that dataset, not a re-download of the archive.
+FETCH_CHANNELS = ("TIR1", "TIR2", "MIR", "WV")
+
+# Geolocation is BIT-IDENTICAL across scans -- checked on four 3RIMG files
+# spanning 2017-2025. Fetch once per satellite, not 19,200 times: 562 GB
+# becomes 360 GB. Keyed by satellite because 3D, 3DR and 3DS differ.
+STATIC_GEOLOCATION = ("Latitude", "Longitude", "Latitude_WV", "Longitude_WV")
+
 # Native resolutions, km. Recorded because they are NOT the same across
 # satellites -- 3D/3DR put WV at 8 km and 3DS at 4 km, which is load-bearing
 # and has already caused one wrong assumption (LIMITATIONS 4b).
@@ -66,7 +91,7 @@ class InsatCacheConfig:
     radius_of_influence_m: float = 12000.0
 
     # --- satellite inputs ---------------------------------------------------
-    channels: tuple = ALL_CHANNELS
+    channels: tuple = FETCH_CHANNELS
     store_dtype: str = "uint16"        # scaled ints; float16 loses BT precision
     cadence_min: float = 30.0
 
@@ -119,7 +144,9 @@ class InsatCacheConfig:
     store_finite_mask: bool = True
 
     # --- provenance ---------------------------------------------------------
-    version: int = 1                   # bump to invalidate every cache
+    fetch_mode: str = "ranged"         # "ranged" | "whole"; Range is verified
+    geolocation_fetched_once: bool = True
+    version: int = 2                   # bump to invalidate every cache
     notes: str = ""
 
     def __post_init__(self):

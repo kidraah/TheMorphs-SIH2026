@@ -25,11 +25,12 @@ def test_every_field_changes_the_fingerprint():
            "antecedent_channel": False, "antecedent_days": 3,
            "antecedent_excludes_current_day": False,
            "antecedent_source": "IMERG-Late-V07",
-           "antecedent_lead_in_days": 7,
+           "antecedent_lead_in_days": 7, "fetch_mode": "whole",
+           "geolocation_fetched_once": False,
            "label_source": "IMERG-Late-V07", "label_km": 4.0,
            "extreme_percentile": 99.5, "label_climatology": "global",
            "nan_policy": "FILL_ZERO", "store_finite_mask": False,
-           "version": 2, "notes": "x"}
+           "version": 3, "notes": "x"}
     fields = {f.name for f in dataclasses.fields(base)}
     assert fields == set(alt), f"untested fields: {fields ^ set(alt)}"
     for name, value in alt.items():
@@ -42,16 +43,20 @@ def test_every_field_changes_the_fingerprint():
 def test_fingerprint_is_stable_across_processes():
     """hash() is randomised per process; this must not be."""
     assert InsatCacheConfig().fingerprint() == InsatCacheConfig().fingerprint()
-    assert InsatCacheConfig().fingerprint() == "a8d4085edddad2de", (
+    assert InsatCacheConfig().fingerprint() == "86fae373df9155e7", (
         "the default config changed -- that is a re-ingest, so it must be "
         "deliberate. Update this value in the same commit that changes it.")
 
 
-def test_all_six_channels_are_kept_not_just_the_two_the_model_reads():
-    """Transfer is already paid: every VIS/SWIR byte crosses the wire whether
-    kept or not. Dropping them saves ~47 GB and risks a 3.4 TB re-download."""
-    assert InsatCacheConfig().channels == ALL_CHANNELS
-    assert set(ALL_CHANNELS) == {"VIS", "SWIR", "MIR", "TIR1", "TIR2", "WV"}
+def test_range_support_inverts_the_channel_decision():
+    """When transfer was fixed at 448 MB, keeping all six channels was free
+    insurance. MOSDAC honours Range (verified byte-identical, 14x saving), so
+    transfer is no longer already paid and VIS/SWIR cost 23x."""
+    from nowcast_train.insat_cache import FETCH_CHANNELS
+    c = InsatCacheConfig()
+    assert c.channels == FETCH_CHANNELS == ("TIR1", "TIR2", "MIR", "WV")
+    assert "VIS" not in c.channels and "SWIR" not in c.channels
+    assert c.fetch_mode == "ranged" and c.geolocation_fetched_once
 
 
 def test_unknown_channel_is_rejected():
@@ -80,5 +85,5 @@ def test_per_scan_metadata_covers_what_cannot_be_recovered_later():
 
 def test_archive_size_is_what_the_plan_assumes():
     c = InsatCacheConfig()
-    gb = c.archive_gb(8000)
-    assert 100 < gb < 140, gb          # ~117 GB, vs 3,500 GB of raw
+    gb = c.archive_gb(19200)
+    assert 170 < gb < 230, gb          # ~197 GB, vs 8,200 GB of whole files
