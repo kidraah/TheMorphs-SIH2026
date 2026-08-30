@@ -151,6 +151,39 @@ has to be demonstrated that the *source* honours it — which is a measurement,
 not a reading of the API docs. All three were caught by measurement and none
 by reasoning.
 
+## A SECOND failure mode: the adjacent check
+
+Distinct from the sentinel pattern and worth its own name:
+
+> **The check passes because it tests something adjacent to what it protects.**
+
+Not a wrong threshold, not a bad value — a guard aimed slightly beside the
+thing it guards, so it reports health about code that is not the code at
+risk. Three instances:
+
+| # | the guard | what it tested | what it protected | result |
+|---|---|---|---|---|
+| A | `test_service_threads` | `pyresample.kd_tree.resample_nearest` | `ingest_scan`, which goes through **satpy's** resample path | green suite, aborting production |
+| B | `_has_network()` in the ERA5 tests | `open_store()` — Zarr **metadata** | tests that read a data **chunk** | guard passed, suite hung 25 min with no signal |
+| C | zenith banding in the alignment gate | offsets with band-masked **cloud and rain** | displacement, which needs the rain field whole | every interior band returned (0,0) — a gate that cannot fail |
+
+C is the worst of the three and was caught only because it was tried against
+a synthetic with a known answer. Masking both fields to a band means any
+shift moves the rain off the mask, so zero offset always wins. It would have
+turned the gate — the thing that clears all Indian training data — into
+something that always passes.
+
+**What distinguishes this from a sentinel bug:** there is no bad value
+anywhere. Every function is correct in isolation. The defect lives in the
+relationship between the check and the thing checked, so reviewing either
+one alone finds nothing.
+
+**The operational counter:** a guard must exercise the *production call
+path*, not a call that resembles it — and where the guard protects a
+decision, run it against an input whose answer is known independently. C was
+found by a synthetic with a planted (-5, -5) displacement; A and B were
+found in production and in a 25-minute hang.
+
 ## The rule, operationally
 
 Before a new source is used for anything:
@@ -191,7 +224,7 @@ data fabricates classes; subsampling it biases against fragmented ones.
 Neither shows up as an invalid value. Compare one tile against a majority
 computed from full resolution before trusting a pyramid level.
 
-**5. For a new GEOMETRY, not just a new field.** Before scoring anything on
+**6. For a new GEOMETRY, not just a new field.** Before scoring anything on
 a new spatial unit, ask what one element of it *is*, and whether counting
 elements equally is a physical statement or an accident of array shape. If
 the elements differ in size, population or duration, equal counting is a

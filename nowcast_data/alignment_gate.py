@@ -63,6 +63,28 @@ MIN_COLD_PIXELS = 1000
 MIN_WET_PIXELS = 1000
 MIN_SCENES = 5
 
+# Cut each scene into zenith bands and regress on the bands, not on
+# scene-mean tan(zenith).
+#
+# MEASURED over the India grid from 74E: tan(zenith) runs 0.130 to 1.322,
+# within-scene sd 0.247. Across the 21 measured scenes, the sd of the
+# SCENE-MEAN tan(zenith) is 0.0413 -- six times smaller. Regression precision
+# on the slope goes as 1/(sd_x * sqrt(N)), and banding raises sd_x by 6x while
+# the extra per-band noise (fewer pixels) cancels against the extra points.
+#
+# Simulated recovery of a true 3.0 px (12 km) slope, 0.5 px band noise,
+# 90% interval:
+#
+#     scenes   between-scene        within-scene bands
+#          3   [-19.75, +27.80]     [+0.94, +5.01]
+#          6   [ -8.04, +13.80]     [+1.58, +4.41]
+#         21   [ -1.70,  +7.56]     [+2.27, +3.73]
+#
+# The between-scene design does not resolve 12 km at ANY scene count -- its
+# interval still spans zero at 21 scenes. That is a design limit, not a data
+# shortage, and no amount of downloading fixes it.
+DEFAULT_TILE_PX = 128        # 512 km at 4 km/px
+
 
 def satellite_zenith(lat, lon, sub_lon: float = 74.0) -> np.ndarray:
     """Satellite zenith angle in degrees for a geostationary sub-longitude."""
@@ -171,6 +193,44 @@ def measure_scene(tir_k, rain_mmhr, lat, lon, scene: str = "",
                        mean_tan_zenith=float(np.nanmean(np.where(cold, tz, np.nan)))
                        if cold.any() else float("nan"),
                        sub_lon=float(sub_lon))
+
+
+def measure_scene_tiled(tir_k, rain_mmhr, lat, lon, scene: str = "",
+                        tile_px: int = DEFAULT_TILE_PX, sub_lon: float = 74.0,
+                        min_cold: int = MIN_COLD_PIXELS, **kw) -> list:
+    """One scene -> one SceneOffset per COMPACT tile.
+
+    Tiles, not zenith bands. The first version cut each scene into quantile
+    bands of tan(zenith), which gives a wide lever arm and does not work:
+    a band is a thin annulus, so the displacement component ALONG the strip
+    is unconstrained and the argmax runs to the search boundary. Measured on
+    a synthetic with a known (-5, -5) displacement, every band recovered one
+    axis and saturated the other at -12.
+
+    A compact square tile constrains both axes, and tiles still span most of
+    the domain's tan(zenith) range because that varies with position. Only
+    the reference (cloud top) is masked; the rain field stays whole, or a
+    shift would move it off the tile and zero offset would always win.
+    """
+    tir = np.asarray(tir_k, dtype=np.float64)
+    rain = np.asarray(rain_mmhr, dtype=np.float64)
+    h, w = tir.shape
+    out = []
+    for r0 in range(0, h - tile_px + 1, tile_px):
+        for c0 in range(0, w - tile_px + 1, tile_px):
+            m = np.zeros_like(tir, dtype=bool)
+            m[r0:r0 + tile_px, c0:c0 + tile_px] = True
+            cold = m & np.isfinite(tir) & (tir <= kw.get("tir_cold_k", 240.0))
+            if int(cold.sum()) < min_cold:
+                continue          # no convection in this tile; not a failure
+            try:
+                out.append(measure_scene(
+                    np.where(m, tir, np.nan), rain, lat, lon,
+                    scene=f"{scene}/r{r0//tile_px}c{c0//tile_px}",
+                    sub_lon=sub_lon, **kw))
+            except ValueError:
+                continue
+    return out
 
 
 def run_gate(scenes: list, grid_km: float = 4.0) -> GateResult:

@@ -852,3 +852,64 @@ def test_channels_are_on_the_analysis_grid():
     ch = zenith_channels()
     assert all(v.shape == (912, 864) for v in ch.values())
     assert np.isfinite(ch["tan_zenith"]).all()
+
+
+# ---------------------------------------------------------------------------
+# Tiled alignment measurement (the gate's lever arm)
+# ---------------------------------------------------------------------------
+
+def _cellular_scene(shift=5, n_cores=300, seed=3):
+    """A scene that looks like identifiable convection: many separate cores,
+    with the rain rigidly displaced by a KNOWN amount."""
+    import numpy as np
+    from nowcast_data.grids import india_area
+    a = india_area(); lons, lats = a.get_lonlats()
+    rng = np.random.default_rng(seed)
+    h, w = lats.shape
+    tir = np.full((h, w), 280.0); rain = np.zeros((h, w))
+    for _ in range(n_cores):
+        r, c = rng.integers(150, h - 150), rng.integers(150, w - 150)
+        rr = int(rng.integers(6, 14))
+        tir[r - rr:r + rr, c - rr:c + rr] = 215.0
+        rain[r - rr + shift:r + rr + shift, c - rr + shift:c + rr + shift] = 8.0
+    return tir, rain, lats, lons
+
+
+def test_tiles_recover_a_known_displacement_on_a_cellular_scene():
+    from nowcast_data.alignment_gate import measure_scene_tiled
+    tir, rain, lats, lons = _cellular_scene(shift=5)
+    tiles = measure_scene_tiled(tir, rain, lats, lons, scene="t")
+    assert len(tiles) >= 10
+    assert all((t.dy, t.dx) == (-5, -5) for t in tiles), \
+        sorted({(t.dy, t.dx) for t in tiles})
+    assert all(t.identifiable for t in tiles)
+
+
+def test_tiling_widens_the_zenith_lever_arm_by_an_order_of_magnitude():
+    """The whole reason tiles exist: between-scene tan(zenith) sd is 0.041,
+    which cannot resolve a 12 km parallax slope at ANY scene count."""
+    from nowcast_data.alignment_gate import measure_scene_tiled
+    tir, rain, lats, lons = _cellular_scene()
+    tz = [t.mean_tan_zenith for t in measure_scene_tiled(tir, rain, lats, lons)]
+    assert max(tz) - min(tz) > 0.4, max(tz) - min(tz)
+
+
+def test_the_rain_field_is_not_masked_to_the_tile():
+    """Masking both fields means any shift moves the rain off the tile, so
+    zero offset always wins and the gate can never fail. Measured: every
+    interior band returned (0, 0) for a known (-5, -5) displacement."""
+    from nowcast_data.alignment_gate import measure_scene_tiled
+    tir, rain, lats, lons = _cellular_scene(shift=5)
+    tiles = measure_scene_tiled(tir, rain, lats, lons)
+    assert not any((t.dy, t.dx) == (0, 0) for t in tiles), \
+        "a tile reported zero offset on a scene with a planted 5-cell shift"
+
+
+def test_a_cellular_scene_is_identifiable_whole_domain_too():
+    """Confirms 2025-08-01 failed on CELLULARITY, not on method: the same
+    whole-domain measurement that gave peak/zero 1.017 there gives >2 here."""
+    from nowcast_data.alignment_gate import measure_scene
+    tir, rain, lats, lons = _cellular_scene(shift=5)
+    so = measure_scene(tir, rain, lats, lons, scene="whole")
+    assert (so.dy, so.dx) == (-5, -5)
+    assert so.identifiable and so.peak / so.zero > 1.5
