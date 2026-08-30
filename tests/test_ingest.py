@@ -913,3 +913,32 @@ def test_a_cellular_scene_is_identifiable_whole_domain_too():
     so = measure_scene(tir, rain, lats, lons, scene="whole")
     assert (so.dy, so.dx) == (-5, -5)
     assert so.identifiable and so.peak / so.zero > 1.5
+
+
+def test_tiles_within_a_scene_are_clustered_not_pooled():
+    """Tiles share their scene's storm field, scan time and registration, so
+    the constant must come from SCENE-level values. Two scenes with planted
+    5 px and 6 px displacements: sd(u) must be 0.707, the sd of {5, 6}, and
+    the constant's SE must reflect n=2, not n=50."""
+    import numpy as np
+    from nowcast_data.alignment_gate import measure_scene_tiled, run_gate_tiled
+    st = {}
+    for i, (sh, sd) in enumerate([(5, 5), (6, 6)]):
+        tir, rain, lats, lons = _cellular_scene(shift=sh, seed=sd)
+        st[f"s{i}"] = measure_scene_tiled(tir, rain, lats, lons, scene=f"s{i}")
+    r = run_gate_tiled(st)
+    assert r.n_scenes_used == 2 and r.n_tiles_used >= 40
+    assert abs(r.scene_level_sd_px - 0.707) < 0.05, r.scene_level_sd_px
+    assert abs(r.constant_se_px - 0.5) < 0.05, r.constant_se_px
+    assert r.verdict == "FAIL"          # a planted 5.5 px offset must fail
+    assert any("NOT" in x and "tiles" in x for x in r.reasons)
+
+
+def test_one_scene_cannot_establish_the_constant_however_many_tiles():
+    """The scene-level term is common to every tile, so tiling cannot
+    separate it. This must be INCONCLUSIVE, not a confident answer."""
+    from nowcast_data.alignment_gate import measure_scene_tiled, run_gate_tiled
+    tir, rain, lats, lons = _cellular_scene(shift=5)
+    r = run_gate_tiled({"only": measure_scene_tiled(tir, rain, lats, lons)})
+    assert r.verdict == "INCONCLUSIVE"
+    assert "tiles do not help it" in " ".join(r.reasons)

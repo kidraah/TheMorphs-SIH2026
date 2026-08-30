@@ -131,6 +131,11 @@ class GateResult:
     parallax_slope_km: float = float("nan")
     reasons: list = field(default_factory=list)
     verdict: str = "INCONCLUSIVE"
+    # Cluster-robust extras, populated by run_gate_tiled.
+    scene_level_sd_px: float = float("nan")
+    constant_se_px: float = float("nan")
+    n_scenes_used: int = 0
+    n_tiles_used: int = 0
 
     @property
     def usable(self) -> list:
@@ -433,3 +438,127 @@ def pooled_offset(results, grid_km: float = 4.0) -> dict:
                    "pooled peak is only %.1f sigma above the surface -- still "
                    "not a measurement" % z_score),
     }
+
+
+# ---------------------------------------------------------------------------
+# Tiles within a scene are NOT independent
+# ---------------------------------------------------------------------------
+#
+# Tiles cut from one scene share its storm field, its scan time and its
+# registration:
+#
+#     dy_tile = const + slope * tz_tile + u_scene + e_tile
+#
+# u_scene is one draw per scene -- advection over the scan/IMERG time
+# mismatch, that scan's own registration error, that half-hour's IMERG
+# retrieval bias. Pooling tiles as if they were independent is the
+# day-blocking and basin-weighting mistake one level down, and it makes the
+# intervals too narrow.
+#
+# The two parameters are affected COMPLETELY DIFFERENTLY, which is what makes
+# this worth handling rather than merely warning about. Simulated at
+# sd(u) = 0.6 px, 3 scenes, 95% error:
+#
+#     tiles/scene      slope     constant
+#               6       1.50         1.21
+#              24       0.69         0.82
+#              96       0.33         0.68
+#             384       0.16         0.69      <- flat
+#
+# The slope keeps improving with tiles, because it is identified from
+# WITHIN-scene variation in tan(zenith) and a common shift is absorbed by the
+# intercept. The constant flattens at the scene-level floor, Var(u)/n_scenes,
+# which no amount of tiling reduces.
+#
+#     TILES BUY THE SLOPE. ONLY SCENES BUY THE CONSTANT.
+#
+# So the slope is fit on pooled tiles, and the constant is formed from
+# per-scene estimates with a between-scene standard error -- cluster-robust,
+# clustered on the scene.
+
+def run_gate_tiled(scene_tiles: dict, grid_km: float = 4.0) -> GateResult:
+    """Gate on tiled measurements, clustering on the scene.
+
+    `scene_tiles` maps a scene name to its list of per-tile SceneOffset.
+    """
+    usable = {k: [t for t in v if t.identifiable] for k, v in scene_tiles.items()}
+    usable = {k: v for k, v in usable.items() if len(v) >= 3}
+    flat = [t for v in usable.values() for t in v]
+    res = GateResult(scenes=flat, grid_km=grid_km)
+
+    if len(usable) < 2:
+        res.verdict = "INCONCLUSIVE"
+        res.reasons.append(
+            f"{len(usable)} scene(s) with >=3 identifiable tiles. The constant "
+            f"cannot be separated from a single scene's own registration and "
+            f"advection -- that term is common to every tile of a scene, so "
+            f"tiles do not help it. At least 2 scenes, preferably 3.")
+        return res
+
+    tz = np.array([t.mean_tan_zenith for t in flat], dtype=float)
+    dy = np.array([t.dy for t in flat], dtype=float)
+    dx = np.array([t.dx for t in flat], dtype=float)
+
+    # Slope from pooled tiles: within-scene tan(zenith) variation identifies it.
+    if np.isfinite(tz).all() and float(np.max(tz) - np.min(tz)) > 0.05:
+        slope, _ = np.polyfit(tz, dy, 1)
+        res.parallax_slope_km = float(slope * grid_km)
+    else:
+        slope = 0.0
+        res.parallax_slope_km = float("nan")
+
+    # Constant per SCENE, with the parallax term removed, then combined
+    # across scenes. n here is the number of scenes, never the tile count.
+    per_scene = []
+    for name, tiles in usable.items():
+        t_tz = np.array([t.mean_tan_zenith for t in tiles], dtype=float)
+        t_dy = np.array([t.dy for t in tiles], dtype=float)
+        per_scene.append(float(np.mean(t_dy - slope * t_tz)))
+    per_scene = np.array(per_scene)
+    const_y = float(np.mean(per_scene))
+    n_sc = len(per_scene)
+    scene_sd = float(np.std(per_scene, ddof=1)) if n_sc > 1 else float("nan")
+    se_const = scene_sd / np.sqrt(n_sc) if np.isfinite(scene_sd) else float("nan")
+
+    const_x = float(np.median([np.median([t.dx for t in v]) for v in usable.values()]))
+    res.constant_px = (const_y, const_x)
+    res.scene_level_sd_px = scene_sd
+    res.constant_se_px = se_const
+    res.n_scenes_used = n_sc
+    res.n_tiles_used = len(flat)
+
+    ok = True
+    mag = float(np.hypot(const_y, const_x))
+    res.reasons.append(
+        f"{n_sc} scenes, {len(flat)} identifiable tiles. Constant estimated "
+        f"from {n_sc} scene-level values (NOT {len(flat)} tiles): "
+        f"{mag:.2f} px +/- {1.96*se_const:.2f} (95%).")
+    res.reasons.append(
+        f"scene-level scatter sd(u) = {scene_sd:.2f} px -- the floor on the "
+        f"constant. Tiles cannot reduce it; only more scenes can.")
+    if mag - 1.96 * se_const > MAX_CONSTANT_OFFSET_PX:
+        ok = False
+        res.reasons.append(
+            f"FAIL: constant {mag:.2f} px exceeds {MAX_CONSTANT_OFFSET_PX:.1f} px "
+            f"even at the lower end of its interval. Independent of viewing "
+            f"geometry, so this is georeferencing, not parallax.")
+    elif mag + 1.96 * se_const > MAX_CONSTANT_OFFSET_PX:
+        res.verdict = "INCONCLUSIVE"
+        res.reasons.append(
+            f"the constant's 95% interval straddles the {MAX_CONSTANT_OFFSET_PX:.1f} px "
+            f"bar ({mag - 1.96*se_const:.2f}..{mag + 1.96*se_const:.2f}). "
+            f"Add scenes -- with sd(u) = {scene_sd:.2f}, "
+            f"{int(np.ceil((1.96*scene_sd/max(MAX_CONSTANT_OFFSET_PX-mag,0.05))**2))} "
+            f"scenes would resolve it.")
+        return res
+    else:
+        res.reasons.append(
+            f"constant {mag:.2f} px is within {MAX_CONSTANT_OFFSET_PX:.1f} px "
+            f"across its whole interval.")
+
+    if np.isfinite(res.parallax_slope_km):
+        res.reasons.append(
+            f"parallax slope {res.parallax_slope_km:+.1f} km per unit "
+            f"tan(zenith); a 12 km cloud top predicts ~12. EXPECTED, not a defect.")
+    res.verdict = "PASS" if ok else "FAIL"
+    return res
