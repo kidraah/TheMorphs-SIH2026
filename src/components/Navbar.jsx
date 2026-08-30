@@ -367,10 +367,10 @@ export const Navbar = () => {
           
           {/* Left: System Identification Title */}
           <div className="text-center md:text-left">
-            <p className="text-[14px] sm:text-[15px] font-extrabold text-[#CC0000] tracking-wide m-0 leading-tight">
+            <p className="text-[14px] sm:text-[15px] font-extrabold text-[#172033] tracking-wide m-0 leading-tight">
               AI-Driven Hyper-Local Early Warning System
             </p>
-            <p className="text-[11.5px] sm:text-[12px] font-semibold text-[#991B1B] mt-0.5 m-0">
+            <p className="text-[11.5px] sm:text-[12px] font-semibold text-slate-600 mt-0.5 m-0">
               Nowcasting for Severe Thunderstorm, Cloudburst &amp; Flash Flood
             </p>
           </div>
