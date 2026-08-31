@@ -48,6 +48,33 @@ that tears the image and assumes a height.
 Receptive field: the displacement is at most ~2.5 cells, well inside a
 patch-4 backbone with attention, so the model can see both the cloud top and
 the rain beneath it.
+
+PROVENANCE: PURE GEOMETRY, NOTHING FITTED
+-----------------------------------------
+Every input to `zenith_channels` is the grid's own lat/lon, a published
+sub-satellite longitude, and spherical trigonometry. No coefficient here was
+tuned against any measurement, and in particular none against the
+cloud-to-rain regression that LIMITATIONS 15 invalidated. The only free
+number in this module is `cloud_top_km=12.0`, and it lives in
+`expected_shift_px`, a reporting helper the cache never calls.
+
+WHAT THE CHANNEL CANNOT DO, AND WHY IT STILL GOES IN
+-----------------------------------------------------
+tan(zenith) is 95% collinear with LATITUDE over India from 74E
+(corr = +0.948, LIMITATIONS 15). Two consequences, both worth stating before
+this is baked into a 197 GB cache:
+
+  * The channel gives the model little that a position encoding does not
+    already carry on 3DR-only data. It is still correct, still static, still
+    free at inference -- but it is not the independent information the
+    docstring above implies when only one satellite is in the training set.
+  * A post-hoc registration check can measure THAT predictions are displaced.
+    It cannot attribute the displacement to parallax rather than to anything
+    else varying with latitude, for exactly the reason the gate could not.
+    Attribution needs 3DS (82E) and 3DR (74E) over the same ground.
+
+Neither is a reason to drop the channel: it costs nothing and it is right.
+Both are reasons not to claim the model "learned parallax" from 3DR alone.
 """
 from __future__ import annotations
 

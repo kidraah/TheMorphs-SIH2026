@@ -610,3 +610,45 @@ increases all the way to the edge of the window because the tile sits at the
 margin of a rain area. **There is no local cloud-to-rain correspondence to
 find in them.** That is a property of the matching problem, not a defect to
 fix.
+
+
+## 16. Eight event files are CORRUPT and carry final names
+
+`mdapi.py` line 649 catches `Exception` around the write loop, logs, and then
+falls through to `os.rename(tmp_file_path, file_path)`. A transfer that dies
+mid-write is therefore **promoted to its final name**, where it looks
+complete and is skipped by the `os.path.exists` check on every later run.
+
+Found by opening all 702 event files: **8 do not open as HDF5**
+(`runs/corrupt_event_files.txt`), 57.7 to 367.0 MB against a 444.7 MB median.
+Four are obviously short; four are near full size and still broken, so a
+size heuristic alone would have missed half of them.
+
+**These must be deleted before any re-pull**, or the client skips them.
+
+The log confirms which client produced the event data: it contains
+`mdapi.py`'s strings only -- "and hence, Download cannot proceed" x4,
+"Error encountered in 'download()' method" x7 -- and none of the parallel
+client's. The parallel client does not have this defect: it verifies
+`written == Content-Length` before `os.replace` and unlinks an over-long
+transfer rather than resuming from corruption.
+
+### The 86-granule shortfall is local, not the server
+
+Tested per the producer's own warning, by walking the listing endpoint the
+way the producer does (metadata only, no auth, no transfer):
+
+| day | on disk | totalResults | listing supplied |
+|---|---|---|---|
+| 2023-07-08 | 33 | 48 | **48** |
+| 2021-10-17 | 27 | 41 | **41** |
+| 2020-10-13 | 28 | 41 | **41** |
+
+The listing supplies the full announced count with unique identifiers on
+every short day tested. The server did not stop supplying results, so
+re-pulling will recover these rather than reproduce the shortfall.
+
+One correction to my own earlier report: 2019-08-05 is **complete** at 43/43.
+I had recorded it as 43/48 by assuming 48 scans/day instead of querying the
+endpoint -- the same arithmetic-instead-of-measurement error the config
+estimator exists to prevent. Its re-pull config is withdrawn.

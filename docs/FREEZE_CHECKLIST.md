@@ -131,3 +131,63 @@ usual shape: averaging tree (10) and grass (30) yields shrubland (20) — a
 real class, a plausible map, entirely fabricated. WorldCover's overviews are
 *not* average-built (every code returned is a valid legend code, checked),
 so the risk here is the subsampling bias above, not invented classes.
+
+
+# FROZEN — 2026-08-30
+
+Fingerprint **`86fae373df9155e7`**, asserted in
+`tests/test_insat_cache_config.py`. Changing it is a re-ingest and must be a
+deliberate commit.
+
+Frozen with the alignment gate INCONCLUSIVE, on the fallback path, under
+three conditions.
+
+## Condition 1 — post-hoc registration is a REQUIRED GATE, not a diagnostic
+
+After the first training run, measure the displacement between the model's
+predicted probability field and the labels, by the same tiled, scene-clustered
+method. It is an easier measurement than the pre-ingest gate, because the
+predicted field is smooth and continuous rather than a thresholded binary
+mask, and binary IoU on sparse masks is precisely what made the gate hard.
+
+**No operational claim, no dashboard, no published risk map before this
+passes.** A learned offset costs interpretation, not skill: the model can
+compensate internally and score well while every map it draws is shifted.
+That is invisible in the loss and in every verification metric in the
+harness.
+
+The residual risk the pre-ingest gate would have caught and this does not:
+if registration drifts across the archive -- satellite repositioning, a
+product version change -- the model learns an average and is wrong per
+scene. Mitigation: run the post-hoc check per YEAR, not pooled, and compare.
+
+## Condition 2 — 3DS/3DR is the only way to measure parallax directly
+
+`corr(tan(zenith), latitude) = +0.948` over India from 74E, so on 3DR-only
+data parallax is not separable from anything else varying with latitude --
+at any scene count, by any method. See LIMITATIONS 15.
+
+The measurement that works: **the same ground cell viewed from 3DR (74E) and
+3DS (82E)**, whose zenith angles differ while latitude, terrain, rain regime
+and climatology are held exactly fixed. That is a within-location contrast
+and it is the only clean identification available.
+
+This is a documented future measurement, not a blocker. It needs paired
+scenes from both satellites over the same hours; 3DS has been operational
+since 2024-06-18, so pairs exist from then on.
+
+## Condition 3 — the config is frozen and the fingerprint is recorded
+
+Channels `("TIR1", "TIR2", "MIR", "WV")`, `fetch_mode="ranged"`,
+`geolocation_fetched_once=True`, cache 197 GB at 19,200 scans.
+`parallax_dy`/`parallax_dx` are pure geometry with nothing fitted
+(`static_channels.py`), which is what made freezing them safe after the
+regression was invalidated.
+
+## Before ingest
+
+1. Delete the 8 corrupt files in `runs/corrupt_event_files.txt` -- they carry
+   final names and a re-pull will skip them otherwise.
+2. Run the 11 `90_repull_*.json` configs (91 granules, all recoverable --
+   the listing endpoint supplies the full count).
+3. Re-verify all event files open as HDF5 afterwards.
