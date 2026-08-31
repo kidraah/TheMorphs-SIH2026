@@ -50,20 +50,7 @@ export const Navbar = () => {
 
           {/* Desktop & Tablet Navigation Links */}
           <div className="hidden lg:flex items-center space-x-0.5 overflow-x-auto scrollbar-none">
-            {/* HOME */}
-            <NavLink
-              to="/"
-              end
-              className={({ isActive }) =>
-                `inline-flex items-center px-3 py-2.5 text-[12px] font-bold tracking-wider uppercase transition-colors whitespace-nowrap ${
-                  isActive
-                    ? 'bg-[#C85D00] text-white border-b-2 border-white'
-                    : 'text-white hover:bg-[#C85D00]'
-                }`
-              }
-            >
-              HOME
-            </NavLink>
+
 
             {/* DASHBOARD */}
             <NavLink
