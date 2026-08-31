@@ -13,6 +13,7 @@ import { useAppStore } from '../store/useAppStore';
 export const Dashboard = () => {
   const { 
     fetchDashboardData, 
+    selectedTimeRange,
     isDataLoading, 
     xaiTriggers, 
     alerts, 
@@ -21,8 +22,8 @@ export const Dashboard = () => {
   } = useAppStore();
 
   useEffect(() => {
-    fetchDashboardData();
-  }, [fetchDashboardData]);
+    fetchDashboardData(selectedTimeRange);
+  }, [fetchDashboardData, selectedTimeRange]);
 
   if (isDataLoading) {
     return (

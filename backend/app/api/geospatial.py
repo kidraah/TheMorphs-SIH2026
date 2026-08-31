@@ -29,18 +29,26 @@ async def trigger_geospatial_processing(background_tasks: BackgroundTasks):
     return ProcessResponse(status="Processing", message="Geospatial batch job queued in background")
 
 @router.get("/heatmap")
-async def get_heatmap():
+async def get_heatmap(time: str = "2h"):
     """
     Returns the generated PNG overlay as a base64 string with bounds.
     """
-    if not geospatial_service.cached_heatmap:
-        # Fallback trigger if not generated yet
+    if not isinstance(geospatial_service.cached_heatmap, dict):
+        geospatial_service.cached_heatmap = {}
+        
+    if time not in geospatial_service.cached_heatmap:
+        scale = 1.0
+        if time == "now": scale = 0.4
+        elif time == "2h": scale = 0.7
+        elif time == "4h": scale = 1.0
+        elif time == "6h": scale = 0.5
+        
         preds = risk_service._run_inference()
         import numpy as np
-        overall_prob = np.maximum.reduce([preds["cloudburst"], preds["thunderstorm"], preds["flashFlood"]])
-        geospatial_service.cached_heatmap = geospatial_service.generate_risk_heatmap(overall_prob)
+        overall_prob = np.maximum.reduce([preds["cloudburst"], preds["thunderstorm"], preds["flashFlood"]]) * scale
+        geospatial_service.cached_heatmap[time] = geospatial_service.generate_risk_heatmap(overall_prob)
         
-    return geospatial_service.cached_heatmap
+    return geospatial_service.cached_heatmap[time]
 
 @router.get("/trajectories")
 async def get_trajectories():

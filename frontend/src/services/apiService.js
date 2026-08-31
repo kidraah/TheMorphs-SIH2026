@@ -11,8 +11,8 @@ const apiClient = axios.create({
 
 export const earlyWarningApi = {
   // Get overall risk metrics (driven by HF model)
-  getRiskSummary: async () => {
-    try { return (await apiClient.get('/api/risk/current')).data; } catch { return null; }
+  getRiskSummary: async (timeRange = '2h') => {
+    try { return (await apiClient.get('/api/risk/current', { params: { time: timeRange } })).data; } catch { return null; }
   },
 
   // Get 6-hour risk timeline (driven by HF model)
@@ -21,13 +21,13 @@ export const earlyWarningApi = {
   },
 
   // Get Explainable AI feature weights (driven by HF model)
-  getXaiTriggers: async () => {
-    try { return (await apiClient.get('/api/xai/triggers')).data; } catch { return []; }
+  getXaiTriggers: async (timeRange = '2h') => {
+    try { return (await apiClient.get('/api/xai/triggers', { params: { time: timeRange } })).data; } catch { return []; }
   },
 
   // Get active alerts (driven by HF model thresholds)
-  getAlerts: async () => {
-    try { return (await apiClient.get('/api/alerts')).data; } catch { return []; }
+  getAlerts: async (timeRange = '2h') => {
+    try { return (await apiClient.get('/api/alerts', { params: { time: timeRange } })).data; } catch { return []; }
   },
 
   // Get ingested telemetry sources
@@ -41,18 +41,18 @@ export const earlyWarningApi = {
   },
 
   // Get all district details
-  getDistrictRiskData: async () => {
+  getDistrictRiskData: async (timeRange = '2h') => {
     try {
-      const res = await apiClient.get('/api/risk/districts');
+      const res = await apiClient.get('/api/risk/districts', { params: { time: timeRange } });
       return res.data;
     } catch {
       return [];
     }
   },
 
-  getGeoHeatmap: async () => {
+  getGeoHeatmap: async (timeRange = '2h') => {
     try {
-      return (await apiClient.get('/api/geo/heatmap')).data;
+      return (await apiClient.get('/api/geo/heatmap', { params: { time: timeRange } })).data;
     } catch {
       return null;
     }

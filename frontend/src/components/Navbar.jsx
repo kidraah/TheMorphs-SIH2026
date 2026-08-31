@@ -33,7 +33,7 @@ export const Navbar = () => {
         className="bg-[#E87516] text-white select-none relative z-[1000]"
         onMouseLeave={() => setActiveDropdown(null)}
       >
-        <div className="max-w-[1720px] mx-auto px-3 sm:px-4 flex items-center justify-between min-h-[42px]">
+        <div className="max-w-[1720px] mx-auto px-3 sm:px-4 flex items-center justify-between min-h-[56px]">
           
           {/* Mobile Hamburger Toggle Button */}
           <div className="flex items-center lg:hidden py-1.5">
@@ -50,27 +50,12 @@ export const Navbar = () => {
 
           {/* Desktop & Tablet Navigation Links */}
           <div className="hidden lg:flex items-center space-x-0.5 overflow-x-auto scrollbar-none">
-            {/* HOME */}
-            <NavLink
-              to="/"
-              end
-              className={({ isActive }) =>
-                `inline-flex items-center px-3 py-2.5 text-[12px] font-bold tracking-wider uppercase transition-colors whitespace-nowrap ${
-                  isActive
-                    ? 'bg-[#C85D00] text-white border-b-2 border-white'
-                    : 'text-white hover:bg-[#C85D00]'
-                }`
-              }
-            >
-              HOME
-            </NavLink>
-
             {/* DASHBOARD */}
             <NavLink
               to="/"
               end
               className={({ isActive }) =>
-                `inline-flex items-center px-3 py-2.5 text-[12px] font-bold tracking-wider uppercase transition-colors whitespace-nowrap ${
+                `inline-flex items-center px-4 py-4 text-[14px] font-bold tracking-wider uppercase transition-colors whitespace-nowrap ${
                   isActive && location.pathname === '/'
                     ? 'bg-[#C85D00] text-white border-b-2 border-white'
                     : 'text-white hover:bg-[#C85D00]'
@@ -84,7 +69,7 @@ export const Navbar = () => {
             <NavLink
               to="/live-map"
               className={({ isActive }) =>
-                `inline-flex items-center px-3 py-2.5 text-[12px] font-bold tracking-wider uppercase transition-colors whitespace-nowrap ${
+                `inline-flex items-center px-4 py-4 text-[14px] font-bold tracking-wider uppercase transition-colors whitespace-nowrap ${
                   isActive
                     ? 'bg-[#C85D00] text-white border-b-2 border-white'
                     : 'text-white hover:bg-[#C85D00]'
@@ -98,7 +83,7 @@ export const Navbar = () => {
             <NavLink
               to="/risk-outlook"
               className={({ isActive }) =>
-                `inline-flex items-center px-3 py-2.5 text-[12px] font-bold tracking-wider uppercase transition-colors whitespace-nowrap ${
+                `inline-flex items-center px-4 py-4 text-[14px] font-bold tracking-wider uppercase transition-colors whitespace-nowrap ${
                   isActive
                     ? 'bg-[#C85D00] text-white border-b-2 border-white'
                     : 'text-white hover:bg-[#C85D00]'
@@ -112,7 +97,7 @@ export const Navbar = () => {
             <NavLink
               to="/alerts"
               className={({ isActive }) =>
-                `inline-flex items-center gap-1.5 px-3 py-2.5 text-[12px] font-bold tracking-wider uppercase transition-colors whitespace-nowrap ${
+                `inline-flex items-center gap-1.5 px-4 py-4 text-[14px] font-bold tracking-wider uppercase transition-colors whitespace-nowrap ${
                   isActive
                     ? 'bg-[#C85D00] text-white border-b-2 border-white'
                     : 'text-white hover:bg-[#C85D00]'
@@ -131,7 +116,7 @@ export const Navbar = () => {
             <NavLink
               to="/forecast"
               className={({ isActive }) =>
-                `inline-flex items-center px-3 py-2.5 text-[12px] font-bold tracking-wider uppercase transition-colors whitespace-nowrap ${
+                `inline-flex items-center px-4 py-4 text-[14px] font-bold tracking-wider uppercase transition-colors whitespace-nowrap ${
                   isActive
                     ? 'bg-[#C85D00] text-white border-b-2 border-white'
                     : 'text-white hover:bg-[#C85D00]'
@@ -145,7 +130,7 @@ export const Navbar = () => {
             <NavLink
               to="/data-layers"
               className={({ isActive }) =>
-                `inline-flex items-center px-3 py-2.5 text-[12px] font-bold tracking-wider uppercase transition-colors whitespace-nowrap ${
+                `inline-flex items-center px-4 py-4 text-[14px] font-bold tracking-wider uppercase transition-colors whitespace-nowrap ${
                   isActive
                     ? 'bg-[#C85D00] text-white border-b-2 border-white'
                     : 'text-white hover:bg-[#C85D00]'
@@ -159,7 +144,7 @@ export const Navbar = () => {
             <NavLink
               to="/reports"
               className={({ isActive }) =>
-                `inline-flex items-center px-3 py-2.5 text-[12px] font-bold tracking-wider uppercase transition-colors whitespace-nowrap ${
+                `inline-flex items-center px-4 py-4 text-[14px] font-bold tracking-wider uppercase transition-colors whitespace-nowrap ${
                   isActive
                     ? 'bg-[#C85D00] text-white border-b-2 border-white'
                     : 'text-white hover:bg-[#C85D00]'
@@ -176,7 +161,7 @@ export const Navbar = () => {
             >
               <button
                 type="button"
-                className={`inline-flex items-center gap-1 px-3 py-2.5 text-[12px] font-bold tracking-wider uppercase transition-colors whitespace-nowrap ${
+                className={`inline-flex items-center gap-1 px-4 py-4 text-[14px] font-bold tracking-wider uppercase transition-colors whitespace-nowrap ${
                   location.pathname === '/settings' || location.pathname === '/about-system'
                     ? 'bg-[#C85D00] text-white border-b-2 border-white'
                     : 'text-white hover:bg-[#C85D00]'

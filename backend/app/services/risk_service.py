@@ -24,11 +24,18 @@ class RiskService:
             }
         return self.cached_prediction
 
-    def get_max_probabilities(self):
+    def get_max_probabilities(self, time_range="2h"):
         preds = self._run_inference()
-        cb_max = float(preds["cloudburst"].max() * 100)
-        ts_max = float(preds["thunderstorm"].max() * 100)
-        ff_max = float(preds["flashFlood"].max() * 100)
+        
+        scale = 1.0
+        if time_range == "now": scale = 0.4
+        elif time_range == "2h": scale = 0.7
+        elif time_range == "4h": scale = 1.0
+        elif time_range == "6h": scale = 0.5
+        
+        cb_max = float(preds["cloudburst"].max() * 100) * scale
+        ts_max = float(preds["thunderstorm"].max() * 100) * scale
+        ff_max = float(preds["flashFlood"].max() * 100) * scale
         return cb_max, ts_max, ff_max
 
     def get_level(self, prob):
@@ -37,32 +44,32 @@ class RiskService:
         if prob > settings.alert_threshold_watch * 100: return "Moderate"
         return "Low"
 
-    def get_current_risk_summary(self):
-        cb_max, ts_max, ff_max = self.get_max_probabilities()
+    def get_current_risk_summary(self, time_range="2h"):
+        cb_max, ts_max, ff_max = self.get_max_probabilities(time_range)
         max_all = max(cb_max, ts_max, ff_max)
 
         return {
             "overallRisk": {
                 "level": self.get_level(max_all),
                 "affectedDistricts": 4, 
-                "gaugeValue": int(max_all)
+                "gaugeValue": round(max_all, 1)
             },
             "thunderstormRisk": {
                 "level": self.get_level(ts_max),
-                "probability": int(ts_max)
+                "probability": round(ts_max, 1)
             },
             "cloudburstRisk": {
                 "level": self.get_level(cb_max),
-                "probability": int(cb_max)
+                "probability": round(cb_max, 1)
             },
             "flashFloodRisk": {
                 "level": self.get_level(ff_max),
-                "probability": int(ff_max)
+                "probability": round(ff_max, 1)
             }
         }
 
-    def get_dynamic_alerts(self):
-        cb_max, ts_max, ff_max = self.get_max_probabilities()
+    def get_dynamic_alerts(self, time_range="2h"):
+        cb_max, ts_max, ff_max = self.get_max_probabilities(time_range)
         alerts = []
         
         # Generate alerts based on actual model probability crossing the warning threshold
@@ -123,7 +130,7 @@ class RiskService:
         return alerts
 
     def get_dynamic_timeline(self):
-        cb_max, ts_max, ff_max = self.get_max_probabilities()
+        cb_max, ts_max, ff_max = self.get_max_probabilities("4h")
         # Since the model outputs a single +3 hour prediction, 
         # we construct a synthesized timeline centered around the model's peak probability
         return [
@@ -134,8 +141,8 @@ class RiskService:
             { "time": "+5 Hours", "thunderstorm": int(ts_max * 0.3), "cloudburst": int(cb_max * 0.2), "flashFlood": int(ff_max * 0.7) }
         ]
 
-    def get_dynamic_xai(self):
-        cb_max, ts_max, ff_max = self.get_max_probabilities()
+    def get_dynamic_xai(self, time_range="2h"):
+        cb_max, ts_max, ff_max = self.get_max_probabilities(time_range)
         triggers = []
         
         # We simulate Grad-CAM outputs based on which hazard is currently spiking in the model
@@ -171,8 +178,8 @@ class RiskService:
             
         return triggers
 
-    def get_dynamic_districts(self):
-        cb_max, ts_max, ff_max = self.get_max_probabilities()
+    def get_dynamic_districts(self, time_range="2h"):
+        cb_max, ts_max, ff_max = self.get_max_probabilities(time_range)
         from app.utils.district_data import BASE_DISTRICTS
         
         results = []
@@ -180,9 +187,9 @@ class RiskService:
             mult = d["base_multiplier"]
             
             # Synthesize district probabilities based on overall model max and district vulnerability
-            d_cb = int(cb_max * mult)
-            d_ts = int(ts_max * mult)
-            d_ff = int(ff_max * mult)
+            d_cb = round(cb_max * mult, 1)
+            d_ts = round(ts_max * mult, 1)
+            d_ff = round(ff_max * mult, 1)
             
             d_max = max(d_cb, d_ts, d_ff)
             

@@ -22,7 +22,7 @@ export const useAppStore = create((set, get) => ({
   geoHeatmap: null,
   geoTrajectories: null,
 
-  fetchDashboardData: async () => {
+  fetchDashboardData: async (timeRange) => {
     set({ isDataLoading: true });
     try {
       const [
@@ -36,14 +36,14 @@ export const useAppStore = create((set, get) => ({
         heatmap,
         trajectories
       ] = await Promise.all([
-        earlyWarningApi.getRiskSummary(),
+        earlyWarningApi.getRiskSummary(timeRange),
         earlyWarningApi.getRiskTimeline(),
-        earlyWarningApi.getXaiTriggers(),
-        earlyWarningApi.getAlerts(),
+        earlyWarningApi.getXaiTriggers(timeRange),
+        earlyWarningApi.getAlerts(timeRange),
         earlyWarningApi.getDataSources(),
         earlyWarningApi.getSystemPerformance(),
-        earlyWarningApi.getDistrictRiskData(),
-        earlyWarningApi.getGeoHeatmap(),
+        earlyWarningApi.getDistrictRiskData(timeRange),
+        earlyWarningApi.getGeoHeatmap(timeRange),
         earlyWarningApi.getGeoTrajectories()
       ]);
 
