@@ -1,0 +1,28 @@
+# Static list of districts to be dynamically adjusted by the AI model
+BASE_DISTRICTS = [
+    {"id": "chamoli", "district": "Chamoli", "state": "Uttarakhand", "rivers": "Alaknanda, Dhauliganga", "base_multiplier": 1.0},
+    {"id": "rudraprayag", "district": "Rudraprayag", "state": "Uttarakhand", "rivers": "Mandakini, Alaknanda", "base_multiplier": 0.95},
+    {"id": "uttarkashi", "district": "Uttarkashi", "state": "Uttarakhand", "rivers": "Bhagirathi, Yamuna", "base_multiplier": 0.85},
+    {"id": "tehri-garhwal", "district": "Tehri Garhwal", "state": "Uttarakhand", "rivers": "Bhagirathi, Bhilangna", "base_multiplier": 0.80},
+    {"id": "bageshwar", "district": "Bageshwar", "state": "Uttarakhand", "rivers": "Saryu, Gomati", "base_multiplier": 0.75},
+    {"id": "pithoragarh", "district": "Pithoragarh", "state": "Uttarakhand", "rivers": "Kali, Gori Ganga", "base_multiplier": 0.65},
+    {"id": "pauri-garhwal", "district": "Pauri Garhwal", "state": "Uttarakhand", "rivers": "Ganga, Nayar", "base_multiplier": 0.60},
+    {"id": "almora", "district": "Almora", "state": "Uttarakhand", "rivers": "Kosi, Suyal", "base_multiplier": 0.55},
+    {"id": "nainital", "district": "Nainital", "state": "Uttarakhand", "rivers": "Gaula, Kosi", "base_multiplier": 0.40},
+    {"id": "champawat", "district": "Champawat", "state": "Uttarakhand", "rivers": "Lodhiva, Sarda", "base_multiplier": 0.35},
+    {"id": "dehradun", "district": "Dehradun", "state": "Uttarakhand", "rivers": "Rispana, Bindal, Tons", "base_multiplier": 0.35},
+    {"id": "haridwar", "district": "Haridwar", "state": "Uttarakhand", "rivers": "Ganga", "base_multiplier": 0.25},
+    {"id": "udham-singh-nagar", "district": "Udham Singh Nagar", "state": "Uttarakhand", "rivers": "Sharda, Nandhaur", "base_multiplier": 0.20},
+    {"id": "kullu", "district": "Kullu", "state": "Himachal Pradesh", "rivers": "Beas, Parbati, Tirthan", "base_multiplier": 0.85},
+    {"id": "mandi", "district": "Mandi", "state": "Himachal Pradesh", "rivers": "Beas, Suketi", "base_multiplier": 0.80},
+    {"id": "chamba", "district": "Chamba", "state": "Himachal Pradesh", "rivers": "Ravi, Beas", "base_multiplier": 0.65},
+    {"id": "shimla", "district": "Shimla", "state": "Himachal Pradesh", "rivers": "Sutlej, Giri", "base_multiplier": 0.60},
+    {"id": "kangra", "district": "Kangra", "state": "Himachal Pradesh", "rivers": "Beas, Banganga", "base_multiplier": 0.60},
+    {"id": "sirmaur", "district": "Sirmaur", "state": "Himachal Pradesh", "rivers": "Giri, Tons", "base_multiplier": 0.55},
+    {"id": "kinnaur", "district": "Kinnaur", "state": "Himachal Pradesh", "rivers": "Sutlej, Baspa", "base_multiplier": 0.35},
+    {"id": "lahaul-spiti", "district": "Lahaul & Spiti", "state": "Himachal Pradesh", "rivers": "Spiti, Chandra, Bhaga", "base_multiplier": 0.20},
+    {"id": "solan", "district": "Solan", "state": "Himachal Pradesh", "rivers": "Sirsa, Gambar", "base_multiplier": 0.40},
+    {"id": "bilaspur", "district": "Bilaspur", "state": "Himachal Pradesh", "rivers": "Sutlej", "base_multiplier": 0.35},
+    {"id": "hamirpur", "district": "Hamirpur", "state": "Himachal Pradesh", "rivers": "Beas, Baner", "base_multiplier": 0.30},
+    {"id": "una", "district": "Una", "state": "Himachal Pradesh", "rivers": "Swan, Beas", "base_multiplier": 0.25}
+]

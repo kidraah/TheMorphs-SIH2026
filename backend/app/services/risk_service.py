@@ -1,0 +1,218 @@
+import torch
+from app.services.model_service import get_model_service
+from app.services.preprocessing import preprocessing_service
+from app.config import settings
+
+class RiskService:
+    def __init__(self):
+        self.cached_prediction = None
+        self.model_service = get_model_service()
+
+    def _run_inference(self):
+        if self.cached_prediction is None:
+            imdaa, insat, terrain = preprocessing_service.get_inference_tensors()
+            probs = self.model_service.predict(imdaa, insat, terrain)
+            
+            cb_map = probs[0, 0, :, :].numpy()
+            ts_map = probs[0, 1, :, :].numpy()
+            ff_map = probs[0, 2, :, :].numpy()
+            
+            self.cached_prediction = {
+                "cloudburst": cb_map,
+                "thunderstorm": ts_map,
+                "flashFlood": ff_map
+            }
+        return self.cached_prediction
+
+    def get_max_probabilities(self):
+        preds = self._run_inference()
+        cb_max = float(preds["cloudburst"].max() * 100)
+        ts_max = float(preds["thunderstorm"].max() * 100)
+        ff_max = float(preds["flashFlood"].max() * 100)
+        return cb_max, ts_max, ff_max
+
+    def get_level(self, prob):
+        if prob > settings.alert_threshold_emergency * 100: return "Extreme"
+        if prob > settings.alert_threshold_warning * 100: return "High"
+        if prob > settings.alert_threshold_watch * 100: return "Moderate"
+        return "Low"
+
+    def get_current_risk_summary(self):
+        cb_max, ts_max, ff_max = self.get_max_probabilities()
+        max_all = max(cb_max, ts_max, ff_max)
+
+        return {
+            "overallRisk": {
+                "level": self.get_level(max_all),
+                "affectedDistricts": 4, 
+                "gaugeValue": int(max_all)
+            },
+            "thunderstormRisk": {
+                "level": self.get_level(ts_max),
+                "probability": int(ts_max)
+            },
+            "cloudburstRisk": {
+                "level": self.get_level(cb_max),
+                "probability": int(cb_max)
+            },
+            "flashFloodRisk": {
+                "level": self.get_level(ff_max),
+                "probability": int(ff_max)
+            }
+        }
+
+    def get_dynamic_alerts(self):
+        cb_max, ts_max, ff_max = self.get_max_probabilities()
+        alerts = []
+        
+        # Generate alerts based on actual model probability crossing the warning threshold
+        if cb_max > settings.alert_threshold_warning * 100:
+            alerts.append({
+                "id": "model-alert-cb",
+                "type": "Cloudburst Warning",
+                "location": "High-Risk Grid Zone (Derived)",
+                "state": "Himalayan Region",
+                "time": "LIVE (Model Output)",
+                "severity": "danger",
+                "details": f"VARUNA AI predicts an {int(cb_max)}% probability of localized cloudburst within the nowcast window.",
+                "issuedBy": "VARUNA System",
+                "validUntil": "+3 Hours",
+                "expectedRainfall": "> 50 mm/hr",
+                "windSpeed": "Variable",
+                "affectedPopulation": "Pending Polygon Aggregation",
+                "recommendedAction": "Monitor steep slopes and local drainage.",
+                "rivers": "Local Catchments"
+            })
+            
+        if ts_max > settings.alert_threshold_warning * 100:
+            alerts.append({
+                "id": "model-alert-ts",
+                "type": "Severe Thunderstorm",
+                "location": "High-Risk Grid Zone (Derived)",
+                "state": "Himalayan Region",
+                "time": "LIVE (Model Output)",
+                "severity": "warning" if ts_max < 70 else "danger",
+                "details": f"VARUNA AI predicts an {int(ts_max)}% probability of severe thunderstorm development.",
+                "issuedBy": "VARUNA System",
+                "validUntil": "+3 Hours",
+                "expectedRainfall": "20-40 mm",
+                "windSpeed": "> 40 km/h",
+                "affectedPopulation": "Pending Polygon Aggregation",
+                "recommendedAction": "Stay indoors. Beware of lightning strikes.",
+                "rivers": "N/A"
+            })
+            
+        if ff_max > settings.alert_threshold_warning * 100:
+            alerts.append({
+                "id": "model-alert-ff",
+                "type": "Flash Flood Warning",
+                "location": "High-Risk Grid Zone (Derived)",
+                "state": "Himalayan Region",
+                "time": "LIVE (Model Output)",
+                "severity": "danger",
+                "details": f"VARUNA AI predicts an {int(ff_max)}% probability of flash flooding in the predicted catchment.",
+                "issuedBy": "VARUNA System",
+                "validUntil": "+3 Hours",
+                "expectedRainfall": "> 40 mm",
+                "windSpeed": "Variable",
+                "affectedPopulation": "Pending Polygon Aggregation",
+                "recommendedAction": "Avoid low-lying areas and river banks.",
+                "rivers": "Local Rivers"
+            })
+            
+        return alerts
+
+    def get_dynamic_timeline(self):
+        cb_max, ts_max, ff_max = self.get_max_probabilities()
+        # Since the model outputs a single +3 hour prediction, 
+        # we construct a synthesized timeline centered around the model's peak probability
+        return [
+            { "time": "+1 Hour", "thunderstorm": int(ts_max * 0.4), "cloudburst": int(cb_max * 0.4), "flashFlood": int(ff_max * 0.2) },
+            { "time": "+2 Hours", "thunderstorm": int(ts_max * 0.8), "cloudburst": int(cb_max * 0.7), "flashFlood": int(ff_max * 0.6) },
+            { "time": "+3 Hours (Peak)", "thunderstorm": int(ts_max), "cloudburst": int(cb_max), "flashFlood": int(ff_max) },
+            { "time": "+4 Hours", "thunderstorm": int(ts_max * 0.6), "cloudburst": int(cb_max * 0.5), "flashFlood": int(ff_max * 0.9) },
+            { "time": "+5 Hours", "thunderstorm": int(ts_max * 0.3), "cloudburst": int(cb_max * 0.2), "flashFlood": int(ff_max * 0.7) }
+        ]
+
+    def get_dynamic_xai(self):
+        cb_max, ts_max, ff_max = self.get_max_probabilities()
+        triggers = []
+        
+        # We simulate Grad-CAM outputs based on which hazard is currently spiking in the model
+        if cb_max > 50 or ff_max > 50:
+            triggers.append({
+                "id": "iwv",
+                "title": "High Integrated Water Vapor (IWV)",
+                "description": "Model attention focused on rapid moisture accumulation",
+                "impact": "High Contribution",
+                "impactType": "danger",
+                "iconType": "droplet"
+            })
+            
+        if ts_max > 40:
+            triggers.append({
+                "id": "ctt",
+                "title": "Cloud Top Temperature Drop",
+                "description": "Model attention focused on strong updrafts",
+                "impact": "High Contribution",
+                "impactType": "danger",
+                "iconType": "cloud-snow"
+            })
+            
+        if len(triggers) == 0:
+            triggers.append({
+                "id": "stable",
+                "title": "Atmosphere Stable",
+                "description": "No significant warning triggers activated in the model.",
+                "impact": "Normal",
+                "impactType": "info",
+                "iconType": "check"
+            })
+            
+        return triggers
+
+    def get_dynamic_districts(self):
+        cb_max, ts_max, ff_max = self.get_max_probabilities()
+        from app.utils.district_data import BASE_DISTRICTS
+        
+        results = []
+        for d in BASE_DISTRICTS:
+            mult = d["base_multiplier"]
+            
+            # Synthesize district probabilities based on overall model max and district vulnerability
+            d_cb = int(cb_max * mult)
+            d_ts = int(ts_max * mult)
+            d_ff = int(ff_max * mult)
+            
+            d_max = max(d_cb, d_ts, d_ff)
+            
+            # Map legacy format for the frontend compatibility
+            legacy_risk = "LOW"
+            if d_max >= 86: legacy_risk = "EXTREME"
+            elif d_max >= 76: legacy_risk = "VERY HIGH"
+            elif d_max >= 56: legacy_risk = "HIGH"
+            elif d_max >= 36: legacy_risk = "MODERATE"
+
+            results.append({
+                "id": d["id"],
+                "district": d["district"],
+                "name": d["district"], # legacy
+                "state": d["state"],
+                "riskLevel": legacy_risk,
+                "vulnerability": "Critical" if d_max >= 76 else "High" if d_max >= 56 else "Moderate" if d_max >= 36 else "Low",
+                "thunderstormProbability": d_ts,
+                "cloudburstProbability": d_cb,
+                "flashFloodProbability": d_ff,
+                "cloudburstProb": d_cb, # legacy
+                "flashFloodProb": d_ff, # legacy
+                "expectedLeadTime": "2–4 hrs" if d_max > 76 else "6-12 hrs",
+                "alert": "Red Warning" if d_max >= 86 else "Orange Alert" if d_max >= 76 else "Yellow Watch" if d_max >= 36 else "Green Advisory",
+                "rainfall24h": f"{int(d_max * 1.5)} mm",
+                "populationExposed": "—",
+                "rivers": d["rivers"]
+            })
+        return results
+
+risk_service = RiskService()
+
+
