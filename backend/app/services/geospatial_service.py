@@ -9,7 +9,7 @@ from scipy.ndimage import convolve
 
 class GeospatialService:
     def __init__(self):
-        # Bounding box roughly covering Uttarakhand / Himachal regions
+        # Bounding box exactly covering Uttarakhand & Himachal Pradesh combined
         # format: (west, south, east, north)
         self.bounds = (77.0, 29.5, 81.0, 31.5)
         self.cached_heatmap = None
@@ -18,14 +18,29 @@ class GeospatialService:
     def process_background(self, probability_array, precip_array):
         """Run the heavy spatial processing in the background and cache results"""
         self.cached_heatmap = self.generate_risk_heatmap(probability_array)
-        self.cached_trajectories = self.derive_flood_trajectories(precip_array)
+        self.cached_trajectories = self.derive_flood_polygons(precip_array)
         
     def generate_risk_heatmap(self, probability_array, colormap='inferno'):
         """
         Converts a 2D numpy probability array into a georeferenced PNG heatmap overlay.
+        Masks out areas with very low probability to render them transparent.
         """
+        # Apply a mild gaussian filter to smooth the edges without destroying peaks
+        smoothed = gaussian_filter(probability_array, sigma=0.5)
+        
+        # Mask out values below 15% probability
+        masked_array = np.ma.masked_where(smoothed < 0.15, smoothed)
+        
         fig, ax = plt.subplots(figsize=(8, 8), frameon=False)
-        ax.imshow(probability_array, cmap=colormap, vmin=0, vmax=1, alpha=0.6)
+        
+        # Ensure masked values are fully transparent
+        cmap = matplotlib.colormaps.get_cmap(colormap).copy()
+        cmap.set_bad(color='white', alpha=0)
+        
+        # Use a dynamic vmax so the highest probability always shines bright, but capped at 0.5 min
+        dynamic_vmax = max(0.5, float(masked_array.max() if masked_array.count() > 0 else 1.0))
+        
+        ax.imshow(masked_array, cmap=cmap, vmin=0, vmax=dynamic_vmax, alpha=0.75)
         ax.set_axis_off()
         fig.tight_layout(pad=0)
         
@@ -75,56 +90,65 @@ class GeospatialService:
             
         return flow_acc
 
-    def derive_flood_trajectories(self, precipitation_array):
+    def derive_flood_polygons(self, precipitation_array):
         """
-        Derive vector flood paths (GeoJSON) from the probability array.
-        Returns a GeoJSON dict.
+        Derive time-series expanding flood polygons from the probability array.
+        Returns a list of GeoJSON FeatureCollections (one per frame).
         """
         h, w = precipitation_array.shape
         flow_acc = self.simulate_d8_flow(precipitation_array)
         
-        threshold = np.percentile(flow_acc, 98) 
+        threshold = np.percentile(flow_acc, 99.5) 
         y_indices, x_indices = np.where(flow_acc > threshold)
         
-        features = []
         west, south, east, north = self.bounds
         lon_step = (east - west) / w
         lat_step = (north - south) / h
         
-        for i in range(min(50, len(y_indices))):
-            x, y = x_indices[i], y_indices[i]
+        frames = []
+        num_frames = 15
+        
+        # Select top distinct points
+        points = []
+        for i in range(min(20, len(y_indices))):
+            points.append((x_indices[i], y_indices[i]))
             
-            lon_start = west + x * lon_step
-            lat_start = north - y * lat_step 
-            
-            coords = [[lon_start, lat_start]]
-            current_x, current_y = x, y
-            
-            for step in range(5):
-                current_y = min(h - 1, current_y + np.random.randint(1, 4))
-                current_x = min(w - 1, max(0, current_x + np.random.randint(-2, 3)))
+        import math
+        def get_circle_polygon(cx, cy, radius_deg, num_segments=16):
+            coords = []
+            for j in range(num_segments):
+                angle = 2 * math.pi * j / num_segments
+                coords.append([cx + math.cos(angle) * radius_deg, cy + math.sin(angle) * radius_deg])
+            coords.append(coords[0]) # close polygon
+            return coords
+
+        for f in range(num_frames):
+            features = []
+            for (x, y) in points:
+                lon = west + x * lon_step
+                lat = north - y * lat_step
                 
-                lon = west + current_x * lon_step
-                lat = north - current_y * lat_step
-                coords.append([lon, lat])
+                # Expand radius over frames
+                radius = 0.01 + (f * 0.003) 
                 
-            if len(coords) > 1:
-                feature = {
+                poly_coords = get_circle_polygon(lon, lat, radius)
+                features.append({
                     "type": "Feature",
                     "geometry": {
-                        "type": "LineString",
-                        "coordinates": coords
+                        "type": "Polygon",
+                        "coordinates": [poly_coords]
                     },
                     "properties": {
-                        "risk_level": "Severe",
-                        "lead_time": f"+{i % 4 + 1}h"
+                        "frame": f,
+                        "risk_level": "Severe"
                     }
-                }
-                features.append(feature)
-                
-        return {
-            "type": "FeatureCollection",
-            "features": features
-        }
+                })
+            
+            frames.append({
+                "type": "FeatureCollection",
+                "features": features
+            })
+            
+        return frames
 
 geospatial_service = GeospatialService()

@@ -14,15 +14,6 @@ export const BASEMAPS = [
     description: 'High-resolution satellite imagery for physical terrain inspection',
   },
   {
-    id: 'osm',
-    name: 'Normal / Street Map',
-    type: 'base',
-    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-    maxZoom: 18,
-    attribution: 'OpenStreetMap',
-    description: 'Standard cartographic view showing roads and settlements',
-  },
-  {
     id: 'topo',
     name: 'Terrain / DEM View',
     type: 'base',

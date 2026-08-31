@@ -10,6 +10,7 @@ export const Navbar = () => {
     alerts, acknowledgedAlerts,
     selectedRegion, setSelectedRegion, regions,
     selectedTimeRange, setSelectedTimeRange,
+    fetchDashboardData,
   } = useAppStore();
 
   const [activeDropdown, setActiveDropdown] = useState(null);
@@ -154,45 +155,7 @@ export const Navbar = () => {
               REPORTS
             </NavLink>
 
-            {/* SYSTEM DROPDOWN (Settings & About) */}
-            <div
-              className="relative shrink-0"
-              onMouseEnter={() => setActiveDropdown('system')}
-            >
-              <button
-                type="button"
-                className={`inline-flex items-center gap-1 px-4 py-4 text-[14px] font-bold tracking-wider uppercase transition-colors whitespace-nowrap ${
-                  location.pathname === '/settings' || location.pathname === '/about-system'
-                    ? 'bg-[#C85D00] text-white border-b-2 border-white'
-                    : 'text-white hover:bg-[#C85D00]'
-                }`}
-                onClick={() => setActiveDropdown(activeDropdown === 'system' ? null : 'system')}
-              >
-                <span>SYSTEM</span>
-                <ChevronDown className="w-3.5 h-3.5 text-orange-100" />
-              </button>
 
-              {activeDropdown === 'system' && (
-                <div className="absolute left-0 top-full w-56 bg-white text-[#172033] shadow-xl border border-[#E2E2E2] rounded-b z-[1000] py-1">
-                  <Link
-                    to="/settings"
-                    onClick={() => setActiveDropdown(null)}
-                    className="flex items-center gap-2 px-3.5 py-2 text-[11.5px] text-[#172033] hover:bg-[#FFF1DD] hover:text-[#C85D00] font-semibold transition-colors"
-                  >
-                    <Settings className="w-3.5 h-3.5 text-slate-500" />
-                    <span>System Settings &amp; Thresholds</span>
-                  </Link>
-                  <Link
-                    to="/about-system"
-                    onClick={() => setActiveDropdown(null)}
-                    className="flex items-center gap-2 px-3.5 py-2 text-[11.5px] text-[#172033] hover:bg-[#FFF1DD] hover:text-[#C85D00] font-semibold transition-colors border-t border-slate-100"
-                  >
-                    <Info className="w-3.5 h-3.5 text-slate-500" />
-                    <span>About SIH77 &amp; Architecture</span>
-                  </Link>
-                </div>
-              )}
-            </div>
           </div>
 
           {/* Search Bar & Quick Indicators */}
@@ -388,7 +351,10 @@ export const Navbar = () => {
                   <button
                     key={opt.id}
                     type="button"
-                    onClick={() => setSelectedTimeRange(opt.id)}
+                    onClick={() => {
+                      setSelectedTimeRange(opt.id);
+                      fetchDashboardData(opt.id);
+                    }}
                     className={`px-2 py-0.5 text-[10.5px] rounded font-semibold transition-all ${
                       selectedTimeRange === opt.id
                         ? 'bg-[#E87516] text-white font-bold shadow-xs'

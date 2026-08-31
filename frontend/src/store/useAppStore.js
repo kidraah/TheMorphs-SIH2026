@@ -78,7 +78,7 @@ export const useAppStore = create((set, get) => ({
   mapLayers: {
     'imdaa-risk': true,
     'insat-cloud': false,
-    'qpe-rain': false,
+    'qpe-rain': true,
     'dem-terrain': false,
     'soil-moisture': false,
     'river-gauges': false,

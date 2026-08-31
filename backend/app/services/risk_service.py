@@ -1,4 +1,7 @@
 import torch
+import numpy as np
+import json
+from datetime import datetime, timedelta
 from app.services.model_service import get_model_service
 from app.services.preprocessing import preprocessing_service
 from app.config import settings
@@ -7,22 +10,25 @@ class RiskService:
     def __init__(self):
         self.cached_prediction = None
         self.model_service = get_model_service()
+        import threading
+        self._inference_lock = threading.Lock()
 
     def _run_inference(self):
-        if self.cached_prediction is None:
-            imdaa, insat, terrain = preprocessing_service.get_inference_tensors()
-            probs = self.model_service.predict(imdaa, insat, terrain)
-            
-            cb_map = probs[0, 0, :, :].numpy()
-            ts_map = probs[0, 1, :, :].numpy()
-            ff_map = probs[0, 2, :, :].numpy()
-            
-            self.cached_prediction = {
-                "cloudburst": cb_map,
-                "thunderstorm": ts_map,
-                "flashFlood": ff_map
-            }
-        return self.cached_prediction
+        with self._inference_lock:
+            if self.cached_prediction is None:
+                imdaa, insat, terrain = preprocessing_service.get_inference_tensors()
+                probs = self.model_service.predict(imdaa, insat, terrain)
+                
+                cb_map = probs[0, 0, :, :].numpy()
+                ts_map = probs[0, 1, :, :].numpy()
+                ff_map = probs[0, 2, :, :].numpy()
+                
+                self.cached_prediction = {
+                    "cloudburst": cb_map,
+                    "thunderstorm": ts_map,
+                    "flashFlood": ff_map
+                }
+            return self.cached_prediction
 
     def get_max_probabilities(self, time_range="2h"):
         preds = self._run_inference()
