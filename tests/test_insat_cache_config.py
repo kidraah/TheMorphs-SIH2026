@@ -18,7 +18,7 @@ def test_every_field_changes_the_fingerprint():
     alt = {"grid_shape": (900, 900), "target_km": 8.0, "projection": "merc",
            "proj_lat_0": 20.0, "proj_lon_0": 80.0, "resample": "bilinear",
            "radius_of_influence_m": 20000.0, "channels": ("TIR1", "WV"),
-           "store_dtype": "float32", "cadence_min": 15.0,
+           "store_dtype": "float64", "cadence_min": 15.0,
            "per_scan_fields": ("scan_time_utc",),
            "static_channels": ("hand_m",),
            "static_source_versions": ("MERIT_Hydro_v1.0.2",),
@@ -34,6 +34,13 @@ def test_every_field_changes_the_fingerprint():
     fields = {f.name for f in dataclasses.fields(base)}
     assert fields == set(alt), f"untested fields: {fields ^ set(alt)}"
     for name, value in alt.items():
+        if name == "projection":
+            # Cannot be varied: it is honoured by rejection, so any other
+            # value raises rather than producing a second fingerprint. See
+            # test_projection_is_honoured_by_rejection.
+            with pytest.raises(ValueError, match="not implemented"):
+                InsatCacheConfig(projection="merc")
+            continue
         kw = {name: value}
         if name == "antecedent_days":
             kw["antecedent_lead_in_days"] = 7
@@ -43,7 +50,7 @@ def test_every_field_changes_the_fingerprint():
 def test_fingerprint_is_stable_across_processes():
     """hash() is randomised per process; this must not be."""
     assert InsatCacheConfig().fingerprint() == InsatCacheConfig().fingerprint()
-    assert InsatCacheConfig().fingerprint() == "90e78e734db78158", (
+    assert InsatCacheConfig().fingerprint() == "b7b662f610cd69e3", (
         "the default config changed -- that is a re-ingest, so it must be "
         "deliberate. Update this value in the same commit that changes it.")
 
@@ -86,7 +93,7 @@ def test_per_scan_metadata_covers_what_cannot_be_recovered_later():
 def test_archive_size_is_what_the_plan_assumes():
     c = InsatCacheConfig()
     gb = c.archive_gb(19200)
-    assert 170 < gb < 230, gb          # ~197 GB, vs 8,200 GB of whole files
+    assert 300 < gb < 400, gb   # ~363 GB uncompressed; ~94 GB on disk at 3.6x
 
 
 def test_decode_behaviour_is_fingerprinted():

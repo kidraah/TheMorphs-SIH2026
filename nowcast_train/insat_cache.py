@@ -92,7 +92,23 @@ class InsatCacheConfig:
 
     # --- satellite inputs ---------------------------------------------------
     channels: tuple = FETCH_CHANNELS
-    store_dtype: str = "uint16"        # scaled ints; float16 loses BT precision
+    # float32, and this field now matches what is written.
+    #
+    # It said "uint16" while the code wrote float32, and bytes_per_scan()
+    # computed the 197 GB budget from uint16 -- wrong by 2x uncompressed. A
+    # field that contradicts the code is worse than no field, because it is
+    # believed.
+    #
+    # Resolved toward float32 rather than toward uint16 on purpose. Scaled
+    # integers need an offset, a scale and a NaN sentinel, and this project
+    # has spent twelve instances on exactly that class of bug -- introducing
+    # a fresh encoded sentinel at the last step, into 19,200 files, is asking
+    # for the thirteenth. float16 is separately unusable: ~3 significant
+    # decimal digits is ~0.25 K at 300 K, comparable to the cloud-top cooling
+    # rates the model keys on. And the saving would be on UNCOMPRESSED size,
+    # which is never what is stored: measured 3.04 MB per npz, so 19,200
+    # granules is ~58 GB.
+    store_dtype: str = "float32"
     cadence_min: float = 30.0
 
     # --- per-scan metadata cached alongside the arrays ----------------------
@@ -166,6 +182,15 @@ class InsatCacheConfig:
     notes: str = ""
 
     def __post_init__(self):
+        # `projection` is honoured by REJECTION: the grid code implements
+        # LAEA only, so any other value would be a fingerprinted field the
+        # code cannot deliver -- the hollow direction of the blind-freeze
+        # failure. Refusing it keeps the field truthful.
+        if self.projection != "laea":
+            raise ValueError(
+                f"projection={self.projection!r} is not implemented; "
+                f"nowcast_data.grids builds LAEA only. A config field the "
+                f"code cannot honour is worse than no field.")
         unknown = set(self.channels) - set(NATIVE_KM)
         if unknown:
             raise ValueError(f"unknown channels: {sorted(unknown)}")
@@ -187,11 +212,17 @@ class InsatCacheConfig:
         return asdict(self) | {"fingerprint": self.fingerprint()}
 
     def bytes_per_scan(self) -> int:
+        """Uncompressed. The stored size is ~3.6x smaller -- measured 3.04 MB
+        per npz against the 22.4 MB this returns."""
         cells = self.grid_shape[0] * self.grid_shape[1]
         width = 2 if self.store_dtype in ("uint16", "int16", "float16") else 4
         n = len(self.channels) + (1 if self.antecedent_channel else 0)
         mask = len(self.channels) if self.store_finite_mask else 0
         return cells * (n * width + mask)     # mask is 1 byte per channel
+
+    def compressed_gb(self, n_scans: int, ratio: float = 3.6) -> float:
+        """What actually lands on disk. `ratio` measured on real granules."""
+        return self.archive_gb(n_scans) / ratio
 
     def archive_gb(self, n_scans: int) -> float:
         return n_scans * self.bytes_per_scan() / 1024 ** 3

@@ -35,6 +35,8 @@ from pathlib import Path
 
 import numpy as np
 
+from nowcast_data.grids import india_area
+
 from .insat_cache import InsatCacheConfig
 
 REQUIRED_DATASETS = ("IMG_TIR1", "IMG_WV", "Latitude", "Longitude")
@@ -125,6 +127,53 @@ class IngestLedger:
         return "\n".join(lines)
 
 
+# NaN encoding for the stored array. The finite mask is authoritative, not
+# this value -- it exists only so the float array has no NaNs to trip
+# downstream arithmetic. Chosen below any physical brightness temperature so
+# that a consumer ignoring the mask gets an obviously-wrong number rather
+# than a plausible one.
+NAN_FILL_K = -999.0
+
+
+def _write_cache_entry(out_dir, cfg: InsatCacheConfig, arrays: dict,
+                       sub_lon: float, checks_passed: bool, meta: dict,
+                       stem: str = "entry"):
+    """Write one granule, honouring every fingerprinted field that describes
+    the bytes. Extracted so the coverage tests can call it directly."""
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    stack = np.stack([np.asarray(arrays[c], dtype=np.float64)
+                      for c in cfg.channels])
+    finite = np.isfinite(stack)
+
+    if cfg.nan_policy == "FILL_ZERO":
+        filled = np.where(finite, stack, 0.0)
+    elif cfg.nan_policy == "FILL_MEAN":
+        m = np.nanmean(stack, axis=(1, 2), keepdims=True)
+        filled = np.where(finite, stack, m)
+    else:                                   # MASK -- the default
+        filled = np.where(finite, stack, NAN_FILL_K)
+
+    payload = {
+        "data": filled.astype(np.dtype(cfg.store_dtype)),
+        "channels": np.array(cfg.channels),
+        "fingerprint": cfg.fingerprint(),
+        "nan_fill": NAN_FILL_K,
+    }
+    if cfg.store_finite_mask:
+        payload["finite"] = finite
+    for f in cfg.per_scan_fields:
+        if f == "sub_satellite_longitude":
+            payload[f] = float(sub_lon)
+        elif f == "physics_check_passed":
+            payload[f] = bool(checks_passed)
+        else:
+            payload[f] = str(meta.get(f, ""))
+    path = out_dir / f"{stem}.npz"
+    np.savez_compressed(path, **payload)
+    return path
+
+
 def ingest_one(path, cfg: InsatCacheConfig, cache_root,
                delete_raw: bool = True, strict_scan: bool = False,
                write: bool = True) -> GranuleResult:
@@ -143,7 +192,12 @@ def ingest_one(path, cfg: InsatCacheConfig, cache_root,
         verify_hdf5(p, REQUIRED_DATASETS, min_bytes=1 << 20)
 
         # 2. decode + regrid
-        arrays, chk = ingest_scan(p, tuple(cfg.channels), strict=False)
+        arrays, chk = ingest_scan(
+            p, tuple(cfg.channels), strict=False,
+            resampler=cfg.resample,
+            radius_of_influence=cfg.radius_of_influence_m,
+            area=india_area(shape=cfg.grid_shape, resolution_m=cfg.target_km * 1000,
+                            lat_0=cfg.proj_lat_0, lon_0=cfg.proj_lon_0))
         res.checks_passed = bool(chk.passed)
 
         # 3. sentinel scan the decoded arrays
@@ -172,19 +226,14 @@ def ingest_one(path, cfg: InsatCacheConfig, cache_root,
             res.state = "cached"        # dry run: verified + scanned, nothing written
             return res
         meta = read_metadata(p)
-        out = Path(cache_root) / cfg.fingerprint()
-        out.mkdir(parents=True, exist_ok=True)
-        stack = np.stack([arrays[c] for c in cfg.channels])
-        finite = np.isfinite(stack)
-        np.savez_compressed(
-            out / (p.stem + ".npz"),
-            data=np.nan_to_num(stack).astype(np.float32),
-            finite=finite,
-            channels=np.array(cfg.channels),
+        _write_cache_entry(
+            Path(cache_root) / cfg.fingerprint(), cfg, arrays,
             sub_lon=float(sub_satellite_longitude(meta)),
             checks_passed=res.checks_passed,
-            fingerprint=cfg.fingerprint(),
-        )
+            meta={"scan_time_utc": str(meta.get("Acquisition_Date_Time", "")),
+                  "satellite": str(meta.get("Satellite_Name", "")),
+                  "reader": str(meta.get("_reader", ""))},
+            stem=p.stem)
 
         # 5. delete raw -- only after the cache file exists
         if delete_raw:

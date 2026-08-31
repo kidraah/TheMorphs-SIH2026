@@ -531,7 +531,8 @@ def mask_clamp_from_file(arrays: dict, path) -> dict:
 
 def resample_to_grid(scene, channels: Sequence[str] = ("TIR1", "WV"),
                      resampler: str = "nearest",
-                     radius_of_influence: float = 12000.0) -> dict:
+                     radius_of_influence: float = 12000.0,
+                     area=None) -> dict:
     """Resample loaded channels onto the common India 4 km grid.
 
     Nearest by default with a 12 km search radius -- generous enough to fill
@@ -539,13 +540,15 @@ def resample_to_grid(scene, channels: Sequence[str] = ("TIR1", "WV"),
     structure, which is the same honesty as the nearest-upsampling used on
     the SEVIR side.
     """
-    resampled = scene.resample(india_area(), resampler=resampler,
+    resampled = scene.resample(area or india_area(), resampler=resampler,
                                radius_of_influence=radius_of_influence)
     return {c: np.asarray(resampled[c].values, dtype=np.float32) for c in channels}
 
 
 def ingest_scan(path, channels: Sequence[str] = ("TIR1", "WV"),
-                strict: bool = True) -> tuple[dict, ScanCheck]:
+                strict: bool = True, resampler: str = "nearest",
+                radius_of_influence: float = 12000.0,
+                area=None) -> tuple[dict, ScanCheck]:
     """Read, sanity-check at native resolution, then resample.
 
     Checks run BEFORE resampling: resampling a mis-decoded field produces a
@@ -581,12 +584,18 @@ def ingest_scan(path, channels: Sequence[str] = ("TIR1", "WV"),
     if strict:
         chk.raise_if_failed()
     if scn is not None:
-        return mask_clamp_from_file(resample_to_grid(scn, channels), path), chk
-    return resample_native_to_grid(native_geo), chk
+        grid = resample_to_grid(scn, channels, resampler=resampler,
+                                radius_of_influence=radius_of_influence,
+                                area=area)
+        return mask_clamp_from_file(grid, path), chk
+    return resample_native_to_grid(native_geo,
+                                   radius_of_influence=radius_of_influence,
+                                   area=area), chk
 
 
 def resample_native_to_grid(native_geo: dict,
-                            radius_of_influence: float = 12000.0) -> dict:
+                            radius_of_influence: float = 12000.0,
+                            area=None) -> dict:
     """Resample the native-reader output onto the common India grid.
 
     Each channel carries its own geolocation, which matters: on 3D/3DR the
@@ -595,7 +604,7 @@ def resample_native_to_grid(native_geo: dict,
     from pyresample.geometry import SwathDefinition
     from pyresample.kd_tree import resample_nearest
 
-    area = india_area()
+    area = area or india_area()
     out = {}
     for ch, v in native_geo.items():
         lat, lon, bt = v["lat"], v["lon"], v["bt"]

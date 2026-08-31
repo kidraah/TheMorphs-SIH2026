@@ -31,17 +31,38 @@ PROJ = {"proj": "laea", "lat_0": CENTRE_LAT, "lon_0": CENTRE_LON,
         "datum": "WGS84", "units": "m"}
 
 
-def india_area():
-    """pyresample AreaDefinition for the common grid."""
+def india_area(shape=None, resolution_m=None, lat_0=None, lon_0=None):
+    """pyresample AreaDefinition for the common grid.
+
+    Parameterised so the cache config can drive it. It took no arguments
+    while InsatCacheConfig carried grid_shape, target_km, proj_lat_0 and
+    proj_lon_0 -- four fields hashed into the fingerprint that could not
+    change the grid. A fingerprint making a claim the code does not honour is
+    how you stop trusting the fingerprint.
+    """
     from pyresample.geometry import AreaDefinition
+
+    if shape is None and resolution_m is None and lat_0 is None and lon_0 is None:
+        return AreaDefinition(
+            area_id="india_4km",
+            description="India 4 km LAEA -- common analysis grid",
+            proj_id="india_laea", projection=PROJ,
+            width=SHAPE[1], height=SHAPE[0], area_extent=EXTENT)
+
+    shape = tuple(shape or SHAPE)
+    res = float(resolution_m or RESOLUTION_M)
+    proj = dict(PROJ)
+    if lat_0 is not None:
+        proj["lat_0"] = float(lat_0)
+    if lon_0 is not None:
+        proj["lon_0"] = float(lon_0)
+    hx, hy = shape[1] * res / 2.0, shape[0] * res / 2.0
     return AreaDefinition(
-        area_id="india_4km",
-        description="India 4 km LAEA -- common analysis grid",
-        proj_id="india_laea",
-        projection=PROJ,
-        width=SHAPE[1], height=SHAPE[0],
-        area_extent=EXTENT,
-    )
+        area_id="india_custom",
+        description="India LAEA -- config-driven",
+        proj_id="india_laea", projection=proj,
+        width=shape[1], height=shape[0],
+        area_extent=(-hx, -hy, hx, hy))
 
 
 @dataclass(frozen=True)
