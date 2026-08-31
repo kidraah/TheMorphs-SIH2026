@@ -135,7 +135,7 @@ so the risk here is the subsampling bias above, not invented classes.
 
 # FROZEN — 2026-08-30
 
-Fingerprint **`86fae373df9155e7`**, asserted in
+Fingerprint **`90e78e734db78158`**, asserted in
 `tests/test_insat_cache_config.py`. Changing it is a re-ingest and must be a
 deliberate commit.
 
@@ -191,3 +191,19 @@ regression was invalidated.
 2. Run the 11 `90_repull_*.json` configs (91 granules, all recoverable --
    the listing endpoint supplies the full count).
 3. Re-verify all event files open as HDF5 afterwards.
+
+
+## Re-frozen 2026-08-31: `90e78e734db78158`
+
+`86fae373df9155e7` is superseded. The LUT-clamp fix turns 0.3–1.1% of cells
+in three of four channels from a number into NaN — unambiguously a change to
+the cached bytes — while **every fingerprinted field stayed identical**.
+
+The freeze was not stale. It was **blind**, which is the worse of the two:
+a stale freeze announces itself on the next load, a blind one does not.
+`InsatCacheConfig` gains `decode_version`, so the raw→kelvin path is now
+covered. Re-freezing cost nothing because no cache had been written yet.
+
+  * `decode_version = 1` — count-1023 fill mask only; night-calibrated BT bounds
+  * `decode_version = 2` — full LUT-plateau mask read per file from its own
+    table; illumination-gated day/night warm-end bounds

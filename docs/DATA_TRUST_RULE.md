@@ -151,6 +151,57 @@ has to be demonstrated that the *source* honours it — which is a measurement,
 not a reading of the API docs. All three were caught by measurement and none
 by reasoning.
 
+## A THIRD failure mode: the under-diagnosed sentinel
+
+> **A sentinel may occupy a RANGE, not a value. A fix that clears the flag is
+> not the same as a fix that clears the defect.**
+
+Instance 3 was recorded as "INSAT count->K LUT clamp, 180.09 K". It was fixed
+by masking count 1023, the off-disk fill index. The flag cleared. The scan
+went quiet. **The defect did not go away**, and the under-diagnosis survived
+nine subsequent instances and a config freeze before anyone looked again.
+
+The LUT does not saturate at one index. It saturates over a PLATEAU:
+
+| channel | plateau | leaked through as a real measurement |
+|---|---|---|
+| TIR1 | counts 921–1023 | 35,489 cells (0.449% of the scan) |
+| TIR2 | counts 922–1023 | 23,312 (0.295%) |
+| WV | counts 996–1023 | 0 — *coincidence, not design* |
+| MIR | counts 983–1023 | **89,929 (1.139%)** |
+
+Every one of those cells decoded to the coldest value in the scene, which is
+exactly what a convective-intensity model keys on. Three of the four frozen
+channels were affected. WV showed zero only because that scan's plateau
+happened to contain nothing but fill.
+
+**Why it stayed hidden.** Masking the fill index removed the largest pile-up,
+so the remaining 0.3–1.1% no longer stood out against it. The check that
+found instance 3 kept passing, because it was asking "is there a suspicious
+pile-up?" and the answer had become no — while the values it was there to
+catch were still in the data.
+
+**What makes this distinct from the adjacent check.** There the guard tested
+something *beside* the thing it protected. Here the guard tested exactly the
+right thing and the DIAGNOSIS was too narrow: a range was read as a point.
+No amount of pointing the guard more carefully would have helped.
+
+**The operational counter.** When a sentinel is found, establish its EXTENT
+before fixing it, not just its value: how many encodings map to it, and is
+the mapping saturated near the boundary? For a lookup table that means
+reading the table. `lut_clamp_value` derives the plateau from each file's own
+LUT, which is also why it needed no per-channel constant — the clamp value
+differs (TIR1 179.86, TIR2 179.93, WV/MIR 179.69) and a constant would have
+been wrong three times out of four.
+
+**Checked and clear elsewhere.** SEVIR's VIL encoding is an analytic formula,
+strictly increasing on bytes 6–254 (253 → 77.25, 254 → 79.26), so byte 255
+really is a single-value sentinel and cannot be the last index of a saturated
+tail. The pretrained checkpoint is not contaminated by this. VIL does have a
+plateau at 0.0 across bytes 0–5, but that is the published equation's own
+definition of "no VIL" rather than an artefact — a censoring worth knowing
+when thresholding, not a decode bug.
+
 ## A SECOND failure mode: the adjacent check
 
 Distinct from the sentinel pattern and worth its own name:
@@ -163,6 +214,7 @@ risk. Three instances:
 
 | # | the guard | what it tested | what it protected | result |
 |---|---|---|---|---|
+| D | the re-pull config generator | the per-day COUNT shortfall | granules that were missing **or corrupt** | three corrupt files sat on count-complete days and were never re-pulled |
 | A | `test_service_threads` | `pyresample.kd_tree.resample_nearest` | `ingest_scan`, which goes through **satpy's** resample path | green suite, aborting production |
 | B | `_has_network()` in the ERA5 tests | `open_store()` — Zarr **metadata** | tests that read a data **chunk** | guard passed, suite hung 25 min with no signal |
 | C | zenith banding in the alignment gate | offsets with band-masked **cloud and rain** | displacement, which needs the rain field whole | every interior band returned (0,0) — a gate that cannot fail |

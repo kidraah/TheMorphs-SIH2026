@@ -30,7 +30,7 @@ def test_every_field_changes_the_fingerprint():
            "label_source": "IMERG-Late-V07", "label_km": 4.0,
            "extreme_percentile": 99.5, "label_climatology": "global",
            "nan_policy": "FILL_ZERO", "store_finite_mask": False,
-           "version": 3, "notes": "x"}
+           "version": 3, "decode_version": 99, "notes": "x"}
     fields = {f.name for f in dataclasses.fields(base)}
     assert fields == set(alt), f"untested fields: {fields ^ set(alt)}"
     for name, value in alt.items():
@@ -43,7 +43,7 @@ def test_every_field_changes_the_fingerprint():
 def test_fingerprint_is_stable_across_processes():
     """hash() is randomised per process; this must not be."""
     assert InsatCacheConfig().fingerprint() == InsatCacheConfig().fingerprint()
-    assert InsatCacheConfig().fingerprint() == "86fae373df9155e7", (
+    assert InsatCacheConfig().fingerprint() == "90e78e734db78158", (
         "the default config changed -- that is a re-ingest, so it must be "
         "deliberate. Update this value in the same commit that changes it.")
 
@@ -87,3 +87,14 @@ def test_archive_size_is_what_the_plan_assumes():
     c = InsatCacheConfig()
     gb = c.archive_gb(19200)
     assert 170 < gb < 230, gb          # ~197 GB, vs 8,200 GB of whole files
+
+
+def test_decode_behaviour_is_fingerprinted():
+    """The LUT-clamp fix turns 0.3-1.1% of cells in three of four channels
+    from a number into NaN -- a change to every cached byte -- while every
+    other fingerprinted field stayed identical. The freeze was not stale, it
+    was BLIND, which is worse: a stale freeze announces itself."""
+    a = InsatCacheConfig()
+    b = InsatCacheConfig(decode_version=a.decode_version + 1)
+    assert a.fingerprint() != b.fingerprint()
+    assert a.decode_version >= 2, "1 was the half-fixed clamp"

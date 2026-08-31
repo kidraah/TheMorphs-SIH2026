@@ -146,6 +146,22 @@ class InsatCacheConfig:
     # --- provenance ---------------------------------------------------------
     fetch_mode: str = "ranged"         # "ranged" | "whole"; Range is verified
     geolocation_fetched_once: bool = True
+
+    # DECODE BEHAVIOUR. Bump whenever the raw -> kelvin path changes.
+    #
+    # This field exists because it was missing when it was needed. The
+    # fingerprint claims to cover "everything that changes the bytes on
+    # disk", and the LUT-clamp fix turns 0.3-1.1% of cells in three of four
+    # channels from a number into NaN -- unambiguously a change to the cached
+    # bytes -- while every fingerprinted field stayed identical. The freeze
+    # was not stale; it was BLIND. That is the worse of the two failures,
+    # because a stale freeze announces itself and a blind one does not.
+    #
+    #   1  count-1023 fill mask only; night-calibrated BT bounds
+    #   2  full LUT-plateau mask read per-file from its own table;
+    #      illumination-gated day/night warm-end bounds
+    decode_version: int = 2
+
     version: int = 2                   # bump to invalidate every cache
     notes: str = ""
 
