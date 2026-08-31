@@ -39,13 +39,22 @@ from __future__ import annotations
 import io
 from dataclasses import dataclass, field
 
-# 8 MiB. At 1 MiB a real scan took 164 reads for 31 MB and ran at 0.93 MB/s
-# single-stream -- latency-bound, not bandwidth-bound, because HDF5 chunk
-# reads are small and scattered across the B-tree. The whole-file path
-# measured 39.4 MB/s over 8 workers on the same link, so the ranged path is
-# request-overhead limited and the block size is the lever. NEEDS MEASURING
-# before the archive schedule is trusted.
-DEFAULT_BLOCK = 8 << 20
+# 1 MiB, and raising it does nothing. Measured at fsspec's own _fetch layer
+# -- where the HTTP range request is actually issued -- on a real 433 MB
+# scan pulling the four IR channels and their LUTs:
+#
+#     block     fetches   wire MB   saving
+#     256 KB       105      19.7     22.0x
+#       1 MB       105      19.7     22.0x
+#       4 MB       105      19.7     22.0x
+#
+# Identical, because h5py's reads already exceed the block size, so fsspec
+# passes them through without over-fetching. The block size is not a lever
+# here. Elapsed time varied 7.3-23.8 s across runs for identical work, so it
+# is network variance, not a block-size effect -- which is why the earlier
+# "bigger blocks are slower" reading was an artefact of reading timings as
+# if they were measurements.
+DEFAULT_BLOCK = 1 << 20
 
 
 @dataclass

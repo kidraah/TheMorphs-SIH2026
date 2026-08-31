@@ -942,3 +942,48 @@ def test_one_scene_cannot_establish_the_constant_however_many_tiles():
     r = run_gate_tiled({"only": measure_scene_tiled(tir, rain, lats, lons)})
     assert r.verdict == "INCONCLUSIVE"
     assert "tiles do not help it" in " ".join(r.reasons)
+
+
+# ---------------------------------------------------------------------------
+# LUT clamp: the fill count is not the whole clamp
+# ---------------------------------------------------------------------------
+
+def test_lut_clamp_masks_the_whole_saturated_plateau():
+    """Masking count 1023 removes the off-disk fill and leaves the rest of
+    the LUT's flat tail decoding as a real, coldest-in-scene measurement.
+    Measured on a real 3RIMG scan: TIR1 35,489 cells (0.449%), TIR2 23,312,
+    MIR 89,929 (1.139%)."""
+    import numpy as np
+    from nowcast_data.insat import lut_clamp_value, mask_lut_clamp
+    table = np.concatenate([np.linspace(300.0, 180.0, 900), np.full(124, 179.7)])
+    counts = np.array([[0, 500, 950, 1000, 1023]])
+    bt = table[counts]
+    assert lut_clamp_value(table) == 179.7
+    out = mask_lut_clamp(bt, table)
+    assert np.isfinite(out[0, :2]).all(), "real measurements survive"
+    assert not np.isfinite(out[0, 2:]).any(), "the whole plateau is masked"
+
+
+def test_clamp_value_is_read_per_channel_not_hardcoded():
+    """TIR1 clamps at 179.86, TIR2 at 179.93, WV and MIR at 179.69. A single
+    constant would be wrong for three of the four."""
+    import numpy as np
+    from nowcast_data.insat import lut_clamp_value
+    for v in (179.86, 179.93, 179.69):
+        t = np.concatenate([np.linspace(300.0, v + 1, 900), np.full(124, v)])
+        assert lut_clamp_value(t) == v
+
+
+def test_day_and_night_warm_bounds_differ():
+    """The night bounds were calibrated at 23:30 UTC and fail every daylight
+    scan -- the warm-end failure tracked solar elevation exactly."""
+    from nowcast_data.insat import (DAY_SUN_ELEVATION_DEG,
+                                    EXPECTED_BT_PERCENTILES,
+                                    EXPECTED_BT_PERCENTILES_DAY)
+    night = EXPECTED_BT_PERCENTILES["TIR1"][99.9]
+    day = EXPECTED_BT_PERCENTILES_DAY["TIR1"][99.9]
+    assert day[1] > night[1], "daytime land heating raises the warm tail"
+    # MIR is looser again: at 3.9 um the signal carries reflected solar, so
+    # its daytime BT is not a temperature at all.
+    assert EXPECTED_BT_PERCENTILES_DAY["MIR"][99.9][1] > day[1]
+    assert 0 < DAY_SUN_ELEVATION_DEG < 15

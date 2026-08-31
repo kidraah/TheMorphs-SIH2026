@@ -51,12 +51,47 @@ INSAT_RESOLUTION_M = {"VIS": 1000, "SWIR": 1000, "MIR": 4000,
 # check meaningful while being immune to both artefacts.
 #
 # (percentile, (min_allowed, max_allowed)) in kelvin.
+# NIGHT bounds. These were calibrated on a 23:30 UTC scene, and applying them
+# in daylight fails every time -- measured across one July day, the warm-end
+# failure tracks solar elevation exactly:
+#
+#     sun elev   TIR1 p99.9   checks
+#       -10.2       297.1      PASS
+#       +45.4       319.2      FAIL
+#       +62.8       324.2      FAIL
+#       +10.2       311.0      FAIL
+#       -45.4       300.1      PASS
+#       -62.9       294.8      PASS
+#
+# That is not a reason to widen the bound -- it is a bound being applied
+# outside the regime it was derived in, which is the same mistake as reading
+# a night calibration onto a day scene. Illumination gating is already how
+# this module handles VIS/SWIR, so the warm end gets day bounds too.
 EXPECTED_BT_PERCENTILES = {
     "TIR1": {1.0: (185.0, 245.0), 99.9: (285.0, 315.0)},
     "TIR2": {1.0: (185.0, 245.0), 99.9: (285.0, 315.0)},
     "MIR": {1.0: (185.0, 250.0), 99.9: (285.0, 325.0)},
     "WV": {1.0: (200.0, 235.0), 99.9: (255.0, 280.0)},
 }
+
+# DAY warm-end bounds, argued from physics rather than fitted to what we saw.
+# India's Thar reaches ~55 C skin temperature (328 K); the highest land
+# surface temperature recorded anywhere is ~70 C (343 K). TIR1/TIR2 measure
+# skin temperature, so 330 K is a defensible daytime ceiling.
+#
+# MIR is different in kind: at 3.9 um the signal carries a REFLECTED SOLAR
+# component, so its daytime brightness temperature is not a temperature at
+# all and legitimately runs 10-20 K above skin over bright hot ground. Its
+# ceiling is therefore looser, and that is a statement about the channel's
+# physics, not a concession to the data.
+EXPECTED_BT_PERCENTILES_DAY = {
+    "TIR1": {99.9: (285.0, 330.0)},
+    "TIR2": {99.9: (285.0, 330.0)},
+    "MIR": {99.9: (285.0, 345.0)},
+    "WV": {99.9: (255.0, 280.0)},        # WV sees the upper troposphere; unchanged
+}
+# Solar elevation above which the day bounds apply.
+DAY_SUN_ELEVATION_DEG = 5.0
 BT_CHANNELS = tuple(EXPECTED_BT_PERCENTILES)
 
 # Fraction of finite pixels allowed to sit exactly at the observed extreme
@@ -74,6 +109,46 @@ MIN_RELIABLE_N = 500_000
 # The off-disk fill count in the INSAT count->temperature LUT. Maps to the
 # LUT's clamped final entry, so it must be masked BEFORE any statistic.
 INSAT_FILL_COUNT = 1023
+
+
+def lut_clamp_value(table) -> float:
+    """The temperature the count->K LUT saturates at, read from the file.
+
+    THE FILL COUNT IS NOT THE WHOLE CLAMP. Masking count 1023 removes the
+    off-disk fill and leaves the rest of the LUT's flat tail behind, because
+    the table is saturated over a PLATEAU of counts, not one index. Measured
+    on a real 3RIMG scan:
+
+        channel  plateau        leaks through as a real measurement
+        TIR1     counts 921-1023   35,489 cells  (0.449% of the scan)
+        TIR2     counts 922-1023   23,312        (0.295%)
+        WV       counts 996-1023        0        (coincidence, not design)
+        MIR      counts 983-1023   89,929        (1.139%)
+
+    Those cells decode to the COLDEST value in the scan -- precisely what a
+    convective-intensity model keys on. This is the same defect as instance 3
+    and it was only half fixed.
+
+    Reading the plateau from the table keeps this channel-agnostic: the clamp
+    VALUE differs per channel (TIR1 179.86, TIR2 179.93, WV/MIR 179.69) but
+    the saturation is a property of each file's own LUT, so no per-channel
+    constant is needed and a new channel is handled without a code change.
+    """
+    t = np.asarray(table, dtype=np.float64)
+    return float(t[-1])
+
+
+def mask_lut_clamp(bt, table):
+    """NaN every cell sitting at the LUT's saturated value.
+
+    A cloud top at exactly the LUT floor is CENSORED, not measured -- the
+    instrument cannot say how much colder it is. NaN is the honest encoding;
+    leaving the number in place asserts a measurement that was not made.
+    """
+    v = lut_clamp_value(table)
+    b = np.asarray(bt, dtype=np.float64).copy()
+    b[b <= v] = np.nan
+    return b
 
 # Reflective channels. Meaningless at night, so they are reported N/A rather
 # than FAIL when the sun is down -- see solar_elevation() below.
@@ -305,7 +380,11 @@ def check_physics(arrays: dict, min_valid_frac: float = 0.05,
 
         v = a[finite]
         if name in EXPECTED_BT_PERCENTILES:
-            for q, (elo, ehi) in EXPECTED_BT_PERCENTILES[name].items():
+            bounds = dict(EXPECTED_BT_PERCENTILES[name])
+            el = solar_elevation(metadata) if metadata else None
+            if el is not None and el > DAY_SUN_ELEVATION_DEG:
+                bounds.update(EXPECTED_BT_PERCENTILES_DAY.get(name, {}))
+            for q, (elo, ehi) in bounds.items():
                 got = float(np.percentile(v, q))
                 ok = elo <= got <= ehi
                 chk.add(f"{name} p{q:g}", ok,
@@ -390,6 +469,9 @@ def read_scan_native(path, channels: Sequence[str] = ("TIR1", "WV")) -> dict:
             table = np.asarray(fh[lut][:], dtype=np.float64)
             bt = table[np.clip(counts, 0, table.size - 1)]
             bt[counts == INSAT_FILL_COUNT] = np.nan
+            # ...and the rest of the saturated tail, which the fill mask
+            # alone leaves behind. See lut_clamp_value.
+            bt = mask_lut_clamp(bt, table)
 
             lat_key = f"Latitude_{ch}" if f"Latitude_{ch}" in fh else "Latitude"
             lon_key = f"Longitude_{ch}" if f"Longitude_{ch}" in fh else "Longitude"
@@ -422,6 +504,29 @@ def read_scan(path, channels: Sequence[str] = ("TIR1", "WV"),
             f"If the product format has drifted, this is where it shows up.")
     scn.load(list(channels), calibration=calibration)
     return scn
+
+
+def mask_clamp_in_native(arrays: dict, path) -> dict:
+    """Clamp mask applied to the NATIVE arrays, before the physics check."""
+    return mask_clamp_from_file(arrays, path)
+
+
+def mask_clamp_from_file(arrays: dict, path) -> dict:
+    """Apply the LUT-clamp mask to already-decoded arrays (the satpy path).
+
+    satpy decodes internally, so the counts are gone by the time we see the
+    result. The clamp value still comes from the file's own LUT rather than a
+    constant, so this stays channel-agnostic.
+    """
+    import h5py
+
+    out = dict(arrays)
+    with h5py.File(path, "r") as fh:
+        for ch in list(out):
+            lut = f"IMG_{ch}_TEMP"
+            if lut in fh:
+                out[ch] = mask_lut_clamp(out[ch], np.asarray(fh[lut][:]))
+    return out
 
 
 def resample_to_grid(scene, channels: Sequence[str] = ("TIR1", "WV"),
@@ -459,6 +564,11 @@ def ingest_scan(path, channels: Sequence[str] = ("TIR1", "WV"),
         native_geo = read_scan_native(path, channels)
         native = {c: v["bt"] for c, v in native_geo.items()}
         reader_used = f"native (satpy failed: {type(e).__name__})"
+    # Mask the LUT clamp HERE, before anything inspects the arrays. A clamped
+    # value is not a measurement, so it must be NaN by the time check_physics
+    # runs -- otherwise the check correctly flags a defect we have already
+    # decided to remove, and the ingest fails on its own fix.
+    native = mask_clamp_in_native(native, path)
     meta = dict(meta) | {"_reader": reader_used}
     if solar_elevation(meta) is None:
         # attribute unusable (INSAT-3DS writes denormal garbage) -- recover
@@ -471,7 +581,7 @@ def ingest_scan(path, channels: Sequence[str] = ("TIR1", "WV"),
     if strict:
         chk.raise_if_failed()
     if scn is not None:
-        return resample_to_grid(scn, channels), chk
+        return mask_clamp_from_file(resample_to_grid(scn, channels), path), chk
     return resample_native_to_grid(native_geo), chk
 
 
