@@ -50,7 +50,7 @@ def test_every_field_changes_the_fingerprint():
 def test_fingerprint_is_stable_across_processes():
     """hash() is randomised per process; this must not be."""
     assert InsatCacheConfig().fingerprint() == InsatCacheConfig().fingerprint()
-    assert InsatCacheConfig().fingerprint() == "b7b662f610cd69e3", (
+    assert InsatCacheConfig().fingerprint() == "f46b5f8bfdbd2b88", (
         "the default config changed -- that is a re-ingest, so it must be "
         "deliberate. Update this value in the same commit that changes it.")
 

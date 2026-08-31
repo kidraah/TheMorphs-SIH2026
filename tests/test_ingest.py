@@ -955,13 +955,18 @@ def test_lut_clamp_masks_the_whole_saturated_plateau():
     MIR 89,929 (1.139%)."""
     import numpy as np
     from nowcast_data.insat import lut_clamp_value, mask_lut_clamp
-    table = np.concatenate([np.linspace(300.0, 180.0, 900), np.full(124, 179.7)])
-    counts = np.array([[0, 500, 950, 1000, 1023]])
+    # A warm plateau is added so the fixture matches a real LUT, which
+    # saturates at BOTH ends -- the first version of this test had only the
+    # cold one and so could not have caught the mirrored defect.
+    table = np.concatenate([np.full(50, 300.0),
+                            np.linspace(299.0, 180.0, 850),
+                            np.full(124, 179.7)])
+    counts = np.array([[60, 500, 950, 1000, 1023]])
     bt = table[counts]
     assert lut_clamp_value(table) == 179.7
     out = mask_lut_clamp(bt, table)
     assert np.isfinite(out[0, :2]).all(), "real measurements survive"
-    assert not np.isfinite(out[0, 2:]).any(), "the whole plateau is masked"
+    assert not np.isfinite(out[0, 2:]).any(), "the whole cold plateau is masked"
 
 
 def test_clamp_value_is_read_per_channel_not_hardcoded():
@@ -987,3 +992,32 @@ def test_day_and_night_warm_bounds_differ():
     # its daytime BT is not a temperature at all.
     assert EXPECTED_BT_PERCENTILES_DAY["MIR"][99.9][1] > day[1]
     assert 0 < DAY_SUN_ELEVATION_DEG < 15
+
+
+def test_lut_clamp_masks_BOTH_ends():
+    """The table saturates warm as well as cold. Masking only the cold end
+    left the mirrored case open -- MIR reserves 232 counts for 339.79 K."""
+    import numpy as np
+    from nowcast_data.insat import lut_plateaus, mask_lut_clamp
+    t = np.concatenate([np.full(200, 340.0), np.linspace(339.0, 180.5, 700),
+                        np.full(124, 179.7)])
+    assert lut_plateaus(t) == (179.7, 340.0)
+    out = mask_lut_clamp(np.array([[340.0, 300.0, 250.0, 179.7]]), t)
+    assert np.isnan(out[0, 0]), "warm plateau masked"
+    assert np.isnan(out[0, 3]), "cold plateau masked"
+    assert out[0, 1] == 300.0 and out[0, 2] == 250.0, "real values untouched"
+
+
+def test_wide_lut_steps_are_quantisation_not_sentinels():
+    """All six --strict-scan failures were this. Near the cold end the MIR
+    table moves 7-16.7 K per count, so one count's cells land on a value
+    whose neighbours are 7-16 K away and the isolation score reads it as a
+    spike. A true clamp is one value shared by MANY counts; quantisation is
+    one count standing alone."""
+    import numpy as np
+    from nowcast_train.insat_ingest import QUANTISATION_STEP_K, _near
+    coarse = np.array([185.98, 193.73, 197.16])
+    assert _near(193.73, coarse)
+    assert not _near(298.0, coarse), "the genuine 298 K warm mode is not flagged"
+    assert QUANTISATION_STEP_K < 7.0, "must catch the 7-16.7 K/count region"
+    assert QUANTISATION_STEP_K > 0.146, "must NOT catch the 0.146 K/count mode"

@@ -176,7 +176,12 @@ class InsatCacheConfig:
     #   1  count-1023 fill mask only; night-calibrated BT bounds
     #   2  full LUT-plateau mask read per-file from its own table;
     #      illumination-gated day/night warm-end bounds
-    decode_version: int = 2
+    #   3  the plateau mask applied at BOTH ends. The table saturates warm as
+    #      well as cold (MIR: 232 counts at 339.79 K), and masking only the
+    #      cold end left the mirrored case open -- latent at 474 cells today,
+    #      but a property of the encoding, not of the scenes we happened to
+    #      look at.
+    decode_version: int = 3
 
     version: int = 2                   # bump to invalidate every cache
     notes: str = ""

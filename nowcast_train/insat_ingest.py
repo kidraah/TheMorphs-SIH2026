@@ -135,6 +135,37 @@ class IngestLedger:
 NAN_FILL_K = -999.0
 
 
+# A LUT step wider than this makes a single count's cells look like an
+# isolated spike. Measured: the flagged MIR values sat where the step is
+# 7.0-16.7 K, while the genuine warm mode at 298 K sits where it is 0.146 K.
+QUANTISATION_STEP_K = 2.0
+
+
+def _quantisation_values(path, channels) -> dict:
+    """Values that are isolated only because the LUT is coarse there."""
+    import h5py
+
+    out = {}
+    try:
+        with h5py.File(path, "r") as fh:
+            for ch in channels:
+                key = f"IMG_{ch}_TEMP"
+                if key not in fh:
+                    continue
+                t = np.asarray(fh[key][:], dtype=np.float64)
+                step = np.abs(np.gradient(t))
+                out[ch] = t[step > QUANTISATION_STEP_K]
+    except Exception:
+        pass
+    return out
+
+
+def _near(value, candidates, tol: float = 0.05) -> bool:
+    if len(candidates) == 0:
+        return False
+    return bool(np.min(np.abs(np.asarray(candidates) - value)) <= tol)
+
+
 def _write_cache_entry(out_dir, cfg: InsatCacheConfig, arrays: dict,
                        sub_lon: float, checks_passed: bool, meta: dict,
                        stem: str = "entry"):
@@ -202,6 +233,14 @@ def ingest_one(path, cfg: InsatCacheConfig, cache_root,
 
         # 3. sentinel scan the decoded arrays
         report = scan_source(arrays, min_fraction=SENTINEL_MIN_FRACTION)
+        # Near the cold end an inverted LUT is STEEP: at 185-197 K the MIR
+        # table moves 7-16.7 K per count, so every cell of a single count
+        # lands on one value whose neighbours are 7-16 K away. The isolation
+        # score reads that as "isolated spike at an extreme" and it is
+        # quantisation, not a sentinel. All six --strict-scan failures were
+        # this. A true clamp is a value shared by MANY counts; quantisation
+        # is one count standing alone.
+        quantised = _quantisation_values(p, cfg.channels)
         flags = []
         for name, rep in report.items():
             for pu in getattr(rep, "pileups", []):
@@ -215,6 +254,11 @@ def ingest_one(path, cfg: InsatCacheConfig, cache_root,
                               "suspicion": pu.suspicion, "note": pu.note,
                               "is_min": bool(pu.is_min), "is_max": bool(pu.is_max)})
         res.sentinel_flags = flags
+        for f in flags:
+            if f["suspicion"] == "high" and _near(f["value"], quantised.get(f["channel"], ())):
+                f["suspicion"] = "quantisation"
+                f["note"] = ("isolated because the LUT step is wide here, not "
+                             "because the value is a sentinel")
         res.high_suspicion = sum(1 for f in flags if f["suspicion"] == "high")
         if res.high_suspicion and strict_scan:
             res.state = "failed_scan"
@@ -286,7 +330,8 @@ def dedupe_by_stem(paths, log=print) -> list:
 
 def ingest_all(paths, cfg: InsatCacheConfig, cache_root, ledger_path,
                delete_raw: bool = True, strict_scan: bool = False,
-               write: bool = True, log=print, log_every: int = 10) -> IngestLedger:
+               write: bool = True, halt_on_scan: bool = False,
+               log=print, log_every: int = 10) -> IngestLedger:
     check_cache_root(cache_root, cfg)
     paths = dedupe_by_stem(paths, log)
     ledger = IngestLedger(ledger_path)
@@ -299,6 +344,14 @@ def ingest_all(paths, cfg: InsatCacheConfig, cache_root, ledger_path,
         ledger.record(str(p), r)
         if r.state != "cached":
             log(f"  [{i}/{len(todo)}] {Path(p).name}: {r.state} -- {r.error[:90]}")
+        if halt_on_scan and r.state == "failed_scan":
+            log(f"\n  HALTED on {Path(p).name}: {r.error}")
+            log(f"  {i - 1} granule(s) ingested before this. Re-run to resume.")
+            for f in r.sentinel_flags:
+                if f["suspicion"] == "high":
+                    log(f"    {f['channel']} value={f['value']:.4g} "
+                        f"{100*f['fraction']:.3f}%  isolation={f['isolation_iqr']:.1f} IQR")
+            break
         elif r.high_suspicion:
             log(f"  [{i}/{len(todo)}] {Path(p).name}: cached with "
                 f"{r.high_suspicion} HIGH-suspicion pile-up(s)")

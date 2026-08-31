@@ -138,16 +138,42 @@ def lut_clamp_value(table) -> float:
     return float(t[-1])
 
 
-def mask_lut_clamp(bt, table):
-    """NaN every cell sitting at the LUT's saturated value.
+def lut_plateaus(table) -> tuple:
+    """(cold_value, warm_value) -- the LUT saturates at BOTH ends.
 
-    A cloud top at exactly the LUT floor is CENSORED, not measured -- the
-    instrument cannot say how much colder it is. NaN is the honest encoding;
-    leaving the number in place asserts a measurement that was not made.
+    The first fix masked only `table[-1]`, the cold end, because that was
+    where the contamination was. The table is symmetric in structure:
+
+        channel   warm plateau        cold plateau
+        TIR1      102 counts @ 340.06   102 counts @ 179.86
+        TIR2      180 counts @ 340.07   101 counts @ 179.93
+        MIR       232 counts @ 339.79    40 counts @ 179.69
+        WV          1 count  @ 326.03    28 counts @ 179.69
+
+    The warm end is nearly unpopulated on the scenes measured -- 474 MIR
+    cells (0.01%) and zero elsewhere -- so it is a LATENT defect rather than
+    an active one. It is masked anyway, because "no cell reached it in the
+    scans we looked at" is not a property of the encoding, and a hotter scene
+    (pre-monsoon Thar, a fire) would populate it. Fixing one end and not the
+    other is how the cold end survived nine instances.
     """
-    v = lut_clamp_value(table)
+    t = np.asarray(table, dtype=np.float64)
+    return float(t[-1]), float(t[0])
+
+
+def mask_lut_clamp(bt, table):
+    """NaN every cell sitting at EITHER saturated end of the LUT.
+
+    A cloud top at the LUT floor, or a surface at its ceiling, is CENSORED,
+    not measured -- the instrument cannot say how much colder or hotter it
+    is. NaN is the honest encoding; leaving the number in place asserts a
+    measurement that was not made, at the coldest or hottest value in the
+    scene, which is exactly what the model keys on.
+    """
+    cold, warm = lut_plateaus(table)
     b = np.asarray(bt, dtype=np.float64).copy()
-    b[b <= v] = np.nan
+    lo, hi = (cold, warm) if cold <= warm else (warm, cold)
+    b[(b <= lo) | (b >= hi)] = np.nan
     return b
 
 # Reflective channels. Meaningless at night, so they are reported N/A rather

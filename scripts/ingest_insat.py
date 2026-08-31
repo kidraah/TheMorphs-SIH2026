@@ -23,7 +23,10 @@ def main():
                     help="verify + scan only; write nothing, delete nothing")
     ap.add_argument("--keep-raw", action="store_true")
     ap.add_argument("--strict-scan", action="store_true",
-                    help="treat any sentinel pile-up as a failure")
+                    help="fail any granule with a HIGH-suspicion pile-up")
+    ap.add_argument("--halt-on-scan", action="store_true",
+                    help="stop the whole run on the first such granule "
+                         "(--strict-scan only fails that granule and continues)")
     ap.add_argument("--limit", type=int, default=0)
     a = ap.parse_args()
 
@@ -57,7 +60,8 @@ def main():
 
     led = ingest_all(paths, cfg, root, a.ledger,
                      delete_raw=(not a.keep_raw and not a.dry_run),
-                     strict_scan=a.strict_scan, write=not a.dry_run)
+                     strict_scan=a.strict_scan, write=not a.dry_run,
+                     halt_on_scan=a.halt_on_scan)
     print()
     print(led.report())
     seen = {}
@@ -66,9 +70,17 @@ def main():
             key = (f["channel"], round(f["value"], 2), f["suspicion"])
             seen.setdefault(key, []).append(f["fraction"])
     hi = {k: v for k, v in seen.items() if k[2] == "high"}
-    print(f"\nSENTINEL SCAN: {len(seen)} distinct pile-up values, "
-          f"{len(hi)} at HIGH suspicion")
-    for (ch, val, sus), fracs in sorted(seen.items(), key=lambda kv: -max(kv[1]))[:10]:
+    n_hi_gran = sum(1 for v in led.results.values() if v.high_suspicion)
+    print(f"\nSENTINEL SCAN")
+    print(f"  {len(seen)} distinct (channel, value) pile-ups, of which "
+          f"{len(hi)} are HIGH")
+    print(f"  {n_hi_gran} granule(s) carry at least one HIGH "
+          f"(a value can recur across granules, so these two counts differ)")
+    # HIGH first. Sorting by fraction buried them: the flagged values sit at
+    # 0.3-0.4% while the benign distribution modes are at 2-3%, so the top
+    # ten by fraction showed nothing but [low].
+    order = sorted(seen.items(), key=lambda kv: (kv[0][2] != "high", -max(kv[1])))
+    for (ch, val, sus), fracs in order[:12]:
         mark = "  <-- HIGH" if sus == "high" else ""
         print(f"  {ch:>5} {val:>9.2f}  {100*max(fracs):>6.3f}% max  "
               f"in {len(fracs):>3} granule(s)  [{sus}]{mark}")
