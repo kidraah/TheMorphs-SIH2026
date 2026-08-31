@@ -236,6 +236,36 @@ decision, run it against an input whose answer is known independently. C was
 found by a synthetic with a planted (-5, -5) displacement; A and B were
 found in production and in a 25-minute hang.
 
+## A FOURTH failure mode: the fixture that cannot fail
+
+> **A fixture for an encoding must reproduce the encoding's full structure,
+> not the part the current test exercises.**
+
+`test_lut_clamp_masks_the_whole_saturated_plateau` used a synthetic LUT with
+a cold plateau and no warm one. It passed, and it could not have caught the
+warm-end saturation, because the structure was not in the fixture. A real
+MIR table reserves 232 counts for 339.79 K; the fixture reserved none.
+
+This is the adjacent-check pattern living in a **fixture** rather than in
+code, and it is the third time a fixture has been the blind spot:
+
+| | fixture | why it could not fail |
+|---|---|---|
+| 1 | `hash(name)` seeding in the multihazard tests | randomised per process, so the "fixed" seed was not fixed |
+| 2 | the inverted `skill` parameter | `skill=0.35` produced CSI 1.000, so the regression test asserted "REGRESSED" while moving a head from bad to perfect, and passed |
+| 3 | the cold-only LUT fixture | the warm plateau was absent from the synthetic table |
+
+All three shared a property: **the test could not fail for the reason it
+existed.** That is not a weak assertion, it is an absent one, and it reads as
+coverage.
+
+**The operational counter.** When a fixture stands in for a real encoding,
+enumerate the encoding's structure first -- both ends of a lookup table,
+every sentinel, every branch of a piecewise decode -- and put all of it in
+the fixture, even the parts today's test does not touch. The cost is a few
+lines; the alternative is a green test over a defect, which is what a fixture
+is specifically supposed to prevent.
+
 ## The rule, operationally
 
 Before a new source is used for anything:

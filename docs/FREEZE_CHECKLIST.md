@@ -135,7 +135,7 @@ so the risk here is the subsampling bias above, not invented classes.
 
 # FROZEN — 2026-08-30
 
-Fingerprint **`90e78e734db78158`**, asserted in
+Fingerprint **`f46b5f8bfdbd2b88`**, asserted in
 `tests/test_insat_cache_config.py`. Changing it is a re-ingest and must be a
 deliberate commit.
 
@@ -207,3 +207,17 @@ covered. Re-freezing cost nothing because no cache had been written yet.
   * `decode_version = 1` — count-1023 fill mask only; night-calibrated BT bounds
   * `decode_version = 2` — full LUT-plateau mask read per file from its own
     table; illumination-gated day/night warm-end bounds
+
+
+## Documented ingest invocation
+
+```
+python scripts/ingest_insat.py --src <roots...> --strict-scan --halt-on-scan
+```
+
+`--halt-on-scan` is not optional in the documented form. `--strict-scan`
+fails the offending granule and continues, which is a name promising more
+than it delivers -- the first strict run reported six failures and completed,
+and the six were only found by reading the ledger afterwards. If a
+HIGH-suspicion pile-up is worth failing a granule for, it is worth looking at
+before another 800 are written.

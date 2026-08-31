@@ -31,6 +31,26 @@ import numpy as np  # noqa: E402
 STEM = re.compile(r"(3[DRS]IMG)_(\d{2}[A-Z]{3}\d{4})_(\d{4})_")
 SAT = {"3RIMG": "INSAT-3DR", "3DIMG": "INSAT-3D", "3SIMG": "INSAT-3DS"}
 
+# Warm-end LUT plateau, read from 12 surviving raw granules' own tables.
+# Constant per (product, channel) for the IR channels; WV is deliberately
+# absent, for two reasons:
+#
+#   * its warm clamp VARIES per file -- 8 distinct values across 3DIMG
+#     (312.25..313.87) and 3 across 3RIMG (326.03..327.87) -- so no constant
+#     is correct for it, which is exactly why the live decode reads each
+#     file's own table instead;
+#   * it does not matter. WV sees the upper troposphere: the maximum
+#     observed across cached granules is 263.27 K, ~50 K below its own
+#     plateau. Its warm plateau is also a single count. Masking it would be
+#     a no-op and guessing at it would not.
+#
+# This table exists ONLY for migrating entries whose raw file is gone. Any
+# granule whose raw survives is re-ingested instead, which reads the LUT.
+WARM_CLAMP_K = {
+    ("3RIMG", "TIR1"): 340.06, ("3RIMG", "TIR2"): 340.07, ("3RIMG", "MIR"): 339.79,
+    ("3DIMG", "TIR1"): 340.08, ("3DIMG", "TIR2"): 340.02, ("3DIMG", "MIR"): 339.94,
+}
+
 
 def meta_from_stem(stem: str) -> dict:
     m = STEM.match(stem)
@@ -83,8 +103,16 @@ def main():
             with np.load(p, allow_pickle=False) as z:
                 data, finite = z["data"], z["finite"]
                 chans = [str(c) for c in z["channels"]]
-                sub_lon = float(z["sub_lon"])
-                checks = bool(z["checks_passed"])
+                # The key was renamed when per_scan_fields was wired
+                # through: "sub_lon" -> "sub_satellite_longitude". A
+                # migration has to read every generation it might meet.
+                sub_lon = float(z["sub_lon"] if "sub_lon" in z
+                                else z["sub_satellite_longitude"])
+                checks = bool(z["checks_passed"] if "checks_passed" in z
+                              else z["physics_check_passed"])
+                prior = {k: str(z[k]) for k in
+                         ("scan_time_utc", "satellite", "reader")
+                         if k in z}
             if list(chans) != list(cfg.channels):
                 skipped += 1
                 continue
@@ -92,10 +120,21 @@ def main():
             # so the old fill value never has to be guessed at.
             arrays = {c: np.where(finite[i], data[i].astype(np.float64), np.nan)
                       for i, c in enumerate(chans)}
+            # decode_version 3: the LUT saturates warm as well as cold.
+            prod = p.stem[:5]
+            for c in chans:
+                warm = WARM_CLAMP_K.get((prod, c))
+                if warm is not None:
+                    # NOT `a` -- that is the argparse namespace in this
+                    # scope, and shadowing it made the ledger update fail
+                    # after the migration had already written every file.
+                    band = arrays[c]
+                    arrays[c] = np.where(band >= warm - 1e-6, np.nan, band)
             if not a.dry_run:
                 _write_cache_entry(dst, cfg, arrays, sub_lon=sub_lon,
                                    checks_passed=checks,
-                                   meta=meta_from_stem(p.stem), stem=p.stem)
+                                   meta={**meta_from_stem(p.stem), **prior},
+                                   stem=p.stem)
             done += 1
         except Exception as e:
             failed.append((p.name, f"{type(e).__name__}: {e}"))

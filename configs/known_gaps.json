@@ -1,0 +1,18 @@
+{
+  "_purpose": "Granules that are ABSENT and will stay absent. A known gap is not missing data: the harness must not score against it, and an audit must not re-derive it as a shortfall every time.",
+  "_rule": "Every entry needs a reason and the evidence for it. 'We could not get it' is not a reason; 'the server returns 500 for this record id, verified on two dates' is.",
+  "gaps": [
+    {
+      "identifier": "3DIMG_02DEC2015_1130_L1B_STD_V01R00.h5",
+      "dataset": "3DIMG_L1B_STD",
+      "record_id": "3243285",
+      "scan_time_utc": "2015-12-02T11:30:00Z",
+      "event": "Chennai floods (hindcast)",
+      "reason": "persistent server-side HTTP 500 from MOSDAC's download endpoint",
+      "evidence": "returned 500 during the original pull (2026-08-29 error log) and again on a 1-byte ranged probe on 2026-08-31: {\"message\":\"Internal Server Error\",\"status\":\"error\"}",
+      "recoverable": false,
+      "impact": "one 30-minute slot on day 2 of a 2-day hindcast event",
+      "handling": "score with the slot MASKED, not as a miss"
+    }
+  ]
+}
