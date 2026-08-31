@@ -199,10 +199,47 @@ def ingest_one(path, cfg: InsatCacheConfig, cache_root,
     return res
 
 
+def dedupe_by_stem(paths, log=print) -> list:
+    """One path per granule, preferring the one that verifies.
+
+    The same granule exists in two trees after a re-pull: the original event
+    directory and the re-pull directory. They write the same cache filename,
+    so ingesting both is idempotent but wastes 5.6 s each -- and if the
+    original copy is the CORRUPT one, ingest order would decide which
+    version lands. Prefer whichever verifies; on a tie prefer the larger.
+    """
+    from nowcast_data.fetch import VerificationError, verify_hdf5
+
+    by_stem: dict[str, list] = {}
+    for p in paths:
+        by_stem.setdefault(Path(p).stem, []).append(p)
+    out, dropped = [], 0
+    for stem, group in sorted(by_stem.items()):
+        if len(group) == 1:
+            out.append(group[0])
+            continue
+        ranked = []
+        for p in group:
+            try:
+                verify_hdf5(p, REQUIRED_DATASETS, min_bytes=1 << 20)
+                ok = True
+            except VerificationError:
+                ok = False
+            ranked.append((ok, os.path.getsize(p), p))
+        ranked.sort(reverse=True)
+        out.append(ranked[0][2])
+        dropped += len(group) - 1
+    if dropped:
+        log(f"  deduped {dropped} duplicate granule(s) across source trees "
+            f"(kept the copy that verifies)")
+    return out
+
+
 def ingest_all(paths, cfg: InsatCacheConfig, cache_root, ledger_path,
                delete_raw: bool = True, strict_scan: bool = False,
                write: bool = True, log=print, log_every: int = 10) -> IngestLedger:
     check_cache_root(cache_root, cfg)
+    paths = dedupe_by_stem(paths, log)
     ledger = IngestLedger(ledger_path)
     todo = [p for p in paths if not ledger.done(str(p))]
     log(f"{len(paths)} granules, {len(todo)} to ingest "

@@ -39,7 +39,13 @@ from __future__ import annotations
 import io
 from dataclasses import dataclass, field
 
-DEFAULT_BLOCK = 1 << 20          # 1 MiB; HDF5 chunk reads are small and clustered
+# 8 MiB. At 1 MiB a real scan took 164 reads for 31 MB and ran at 0.93 MB/s
+# single-stream -- latency-bound, not bandwidth-bound, because HDF5 chunk
+# reads are small and scattered across the B-tree. The whole-file path
+# measured 39.4 MB/s over 8 workers on the same link, so the ranged path is
+# request-overhead limited and the block size is the lever. NEEDS MEASURING
+# before the archive schedule is trusted.
+DEFAULT_BLOCK = 8 << 20
 
 
 @dataclass

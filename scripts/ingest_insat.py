@@ -16,7 +16,7 @@ from pathlib import Path  # noqa: E402
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--src", required=True, help="root of raw .h5 files")
+    ap.add_argument("--src", required=True, nargs="+", help="one or more roots of raw .h5 files")
     ap.add_argument("--cache", default=None, help="cache root (default NOWCAST_CACHE_DIR)")
     ap.add_argument("--ledger", default="runs/insat_ingest.json")
     ap.add_argument("--dry-run", action="store_true",
@@ -33,9 +33,12 @@ def main():
 
     cfg = InsatCacheConfig()
     root = a.cache or str(cache_dir())
-    paths = sorted(p for p in glob.glob(os.path.join(a.src, "**", "*.h5"),
-                                        recursive=True)
-                   if not os.path.basename(p).startswith("._"))
+    paths = []
+    for src in a.src:
+        paths += [p for p in glob.glob(os.path.join(src, "**", "*.h5"),
+                                       recursive=True)
+                  if not os.path.basename(p).startswith("._")]
+    paths = sorted(set(paths))
     if a.limit:
         paths = paths[:a.limit]
 

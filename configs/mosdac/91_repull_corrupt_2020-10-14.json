@@ -1,0 +1,24 @@
+{
+  "_purpose": "RE-PULL for 2020-10-14: this day is COUNT-complete but holds a CORRUPT file (3RIMG_14OCT2020_2045_L1B_STD_V01R00.h5). The first re-pull round was generated from the count shortfall, which is a different guard from content verification -- a day can be complete by count and hold a truncated file promoted to its final name.",
+  "_delete_first": "3RIMG_14OCT2020_2045_L1B_STD_V01R00.h5",
+  "_why": "the client skips files that exist, so the corrupt one must be deleted before this config is run or it will be skipped again",
+  "user_credentials": {
+    "username": "",
+    "password": ""
+  },
+  "search_parameters": {
+    "datasetId": "3RIMG_L1B_STD",
+    "startTime": "2020-10-14",
+    "endTime": "2020-10-14",
+    "count": "",
+    "boundingBox": "62.3,5.8,101.7,39.5",
+    "gId": ""
+  },
+  "download_settings": {
+    "download_path": "data/insat",
+    "organize_by_date": true,
+    "skip_user_prompt": false,
+    "generate_error_log": true,
+    "error_log_path": "data/insat/logs"
+  }
+}
