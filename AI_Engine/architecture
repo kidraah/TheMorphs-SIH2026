@@ -1,0 +1,505 @@
+# VARUNA Hybrid TransUNet — Deep Architecture Explainer
+
+> A deep-dive into how VARUNA reads atmospheric data across **space**, **time**, and **multiple disaster types** simultaneously.
+
+---
+
+## The Core Problem VARUNA Solves
+
+Traditional weather models treat every pixel of a weather map independently. They fail to answer three fundamental questions at once:
+
+| Question | Challenge | VARUNA's Solution |
+|---|---|---|
+| **When?** | Weather is a movie, not a photo | 3D Convolutional Temporal Compression |
+| **Where?** | Fine-grained spatial precision needed | 2D U-Net encoder/decoder with skip connections |
+| **What's related?** | Arabian Sea moisture → Himalayan storm | Multi-Head Self-Attention at the bottleneck |
+| **Which disaster?** | Cloudburst ≠ Thunderstorm ≠ Flash Flood | 3 independent multi-task decoder heads |
+
+VARUNA handles all four simultaneously in a single forward pass.
+
+---
+
+## The Big Picture: Data Flows Through 5 Stages
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         INPUTS (3 modalities)                           │
+│                                                                         │
+│  IMDAA: (B, 30ch, T=6, 256, 256)    30 atmospheric variables            │
+│         [temperature, humidity, wind u/v, pressure, CAPE...]            │
+│                                                                         │
+│  INSAT: (B,  4ch, T=6, 256, 256)    4 satellite channels                │
+│         [Water Vapor, Cloud Top Temp, HEM, CTT_Rate]                    │
+│                                                                         │
+│  Terrain: (B, 2ch,      256, 256)   2 static fields                     │
+│           [Elevation, Slope]                                            │
+└───────────────┬──────────────────┬──────────────────────────────────────┘
+                │                  │
+    ┌───────────▼──────────┐       │
+    │  STAGE 1: 3D Conv    │       │
+    │  Temporal Compression│       │
+    │  T=6 → T=1           │       │
+    └───────────┬──────────┘       │
+                │                  │
+    ┌───────────▼──────────────────▼──────────────────────────────────────┐
+    │  STAGE 2: Early Fusion (Concatenation)                              │
+    │  [IMDAA: 64ch] + [INSAT: 32ch] + [Terrain: 16ch] = 112ch           │
+    └───────────────────────────────┬─────────────────────────────────────┘
+                                    │
+    ┌───────────────────────────────▼─────────────────────────────────────┐
+    │  STAGE 3: U-Net Shared Encoder (CNN Spatial Feature Extraction)     │
+    │  enc1: 112ch → 128ch  (256x256)  [save skip1]                       │
+    │  enc2: 128ch → 256ch  (128x128)  [save skip2]                       │
+    │  pool → 64x64 bottleneck                                            │
+    └───────────────────────────────┬─────────────────────────────────────┘
+                                    │
+    ┌───────────────────────────────▼─────────────────────────────────────┐
+    │  STAGE 4: Hybrid Bottleneck (CNN + Transformer)                     │
+    │  CNN: 256ch → 512ch  (64x64)                                        │
+    │  Attention: 64x64 grid → 4096 tokens → MHSA → back to 64x64        │
+    └──────┬───────────────────────────────────────────────────────┬──────┘
+           │                                                       │
+    ┌──────▼──────┐       ┌─────────────────┐       ┌─────────────▼──────┐
+    │ HEAD 1      │       │ HEAD 2           │       │ HEAD 3             │
+    │ Thunderstorm│       │ Cloudburst       │       │ Flash Flood        │
+    │ Decoder     │       │ Decoder          │       │ Decoder            │
+    └──────┬──────┘       └────────┬────────┘       └─────────────┬──────┘
+           │                       │                              │
+    ┌──────▼───────────────────────▼──────────────────────────────▼──────┐
+    │  STAGE 5: OUTPUT → (B, 3, 256, 256)                                 │
+    │  [Cloudburst prob map] [Thunderstorm prob map] [FlashFlood prob map] │
+    └─────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Stage 1 — 3D Convolutional Temporal Compression
+
+### The Intuition: A Flip-Book of the Atmosphere
+
+Imagine you have 6 photographs of a storm taken every 3 hours. A regular 2D CNN would look at each photo separately and have no understanding of *movement*. It would be like describing a movie by only its final frame.
+
+A **3D convolution** does something fundamentally different: its kernel slides along three axes — **Height, Width, AND Time**. It answers questions like:
+- *"Is the pressure dropping over the last 6 hours here?"* (a storm approaching)
+- *"Is water vapor rapidly increasing in this region?"* (convective buildup)
+- *"How fast is the cloud top temperature falling?"* (storm intensification rate)
+
+By the end of Stage 1, 6 timesteps are compressed into **one single, temporally-aware feature map** that encodes the atmospheric trajectory, not just its current state.
+
+### The Code
+
+```python
+# model.py: SpatiotemporalMultiTaskModel.__init__
+
+# === IMDAA: 30 atmospheric channels, 6 timesteps ===
+# Input shape:  (Batch, 30_channels, T=6, H=256, W=256)
+# Output shape: (Batch, 64_channels, T=1, H=256, W=256) → squeeze → (B, 64, 256, 256)
+self.imdaa_time_compress = nn.Sequential(
+    # Step 1: kernel_size=(3, 3, 3) with padding=(0,1,1)
+    #   - The (3) temporal kernel covers 3 consecutive timesteps
+    #   - No temporal padding means time shrinks: T=6 → T=4
+    #   - Spatial padding=1 keeps H,W unchanged: 256x256 → 256x256
+    nn.Conv3d(30, 32, kernel_size=(3, 3, 3), padding=(0, 1, 1)),
+    nn.BatchNorm3d(32),
+    nn.ReLU(inplace=True),
+
+    # Step 2: kernel_size=(4, 3, 3)
+    #   - The (4) temporal kernel covers ALL remaining 4 timesteps in one shot
+    #   - T=4 → T=1  ← This collapses time into a single slice
+    nn.Conv3d(32, 64, kernel_size=(4, 3, 3), padding=(0, 1, 1)),
+    nn.BatchNorm3d(64),
+    nn.ReLU(inplace=True),
+)
+
+# === INSAT: 4 satellite channels ===
+# Same 2-step design: T=6 → T=4 → T=1
+self.insat_time_compress = nn.Sequential(
+    nn.Conv3d(4, 16, kernel_size=(3, 3, 3), padding=(0, 1, 1)),
+    nn.BatchNorm3d(16),
+    nn.ReLU(inplace=True),
+    nn.Conv3d(16, 32, kernel_size=(4, 3, 3), padding=(0, 1, 1)),
+    nn.BatchNorm3d(32),
+    nn.ReLU(inplace=True),
+)
+```
+
+### Shape Tracing (IMDAA)
+
+```
+Input:           (B, 30ch, T=6, 256, 256)
+After Conv3D_1:  (B, 32ch, T=4, 256, 256)   ← T shrank by 2 (no pad on time)
+After Conv3D_2:  (B, 64ch, T=1, 256, 256)   ← T fully collapsed
+After squeeze(2):(B, 64ch,      256, 256)   ← 3D → 2D, time absorbed into features
+```
+
+### Why Two 3D Conv Layers and Not One?
+
+A single layer with `kernel=(6,3,3)` would jumble all 6 timesteps at once — the model wouldn't learn the notion of *sequence order*. The **two-step progressive compression** lets Layer 1 learn short-term patterns (T-1 → T-3 relationships, like "pressure dropping over 6 hours") and Layer 2 combine those into a holistic long-term signature (the full 18-hour trajectory). This is the same principle as stacking LSTMs, but done efficiently in parallel with convolutions.
+
+---
+
+## Stage 2 — Early Fusion
+
+### The Intuition: Combining Different Sensors Into One View
+
+Think of it like a doctor who has X-rays (satellite), blood tests (atmospheric reanalysis), and a 3D body scan (terrain DEM). Each provides different information about the same patient. Before making a diagnosis, the doctor lays them all out together.
+
+VARUNA does this with a simple **concatenation** along the channel dimension.
+
+```python
+# model.py: forward()
+
+# After temporal compression:
+x_imdaa   = self.imdaa_time_compress(imdaa).squeeze(2)   # (B, 64, 256, 256)
+x_insat   = self.insat_time_compress(insat).squeeze(2)    # (B, 32, 256, 256)
+x_terrain = self.terrain_embed(terrain)                    # (B, 16, 256, 256)
+
+# torch.cat along dim=1 (channels) → Simple, powerful early fusion
+x = torch.cat([x_imdaa, x_insat, x_terrain], dim=1)       # (B, 112, 256, 256)
+```
+
+### Why Terrain Gets a 2D Conv (Not 3D)?
+
+```python
+# Terrain is STATIC — it never changes across timesteps
+self.terrain_embed = nn.Sequential(
+    nn.Conv2d(2, 16, kernel_size=3, padding=1),   # Elevation + Slope → 16ch features
+    nn.BatchNorm2d(16),
+    nn.ReLU(inplace=True),
+)
+```
+
+Terrain (CartoDEM) is a fixed map of the landscape — mountains don't move. So there's no temporal dimension to compress. The 2D Conv simply extracts terrain-specific features (e.g., steep ridges concentrate rainfall → higher flash flood risk). These terrain features are broadcast to match the temporal features at every single prediction window.
+
+---
+
+## Stage 3 — Shared U-Net Encoder (Spatial Feature Hierarchy)
+
+### The Intuition: Zooming Out to See the Bigger Picture
+
+Imagine looking at a storm from your window (you see individual rain drops), from a helicopter (you see the storm cell), and from a satellite (you see the entire monsoon system). Each "altitude" reveals different information. U-Net's encoder does exactly this through progressive downsampling.
+
+The key insight is that **spatial resolution is traded for semantic richness**:
+- **256x256** → Individual pixels, fine-grained local texture (temperature gradient between two valleys)
+- **128x128** → Mesoscale patterns (organized convective cells forming)
+- **64x64** → Synoptic-scale structures (entire monsoon depression, Bay of Bengal → Uttarkashi corridor)
+
+```python
+# model.py: __init__
+self.enc1 = ConvBlock2D(112, 128)   # Learns local weather texture
+self.pool1 = nn.MaxPool2d(2)        # Halves resolution: 256x256 → 128x128
+
+self.enc2 = ConvBlock2D(128, 256)   # Learns mesoscale patterns
+self.pool2 = nn.MaxPool2d(2)        # Halves resolution: 128x128 → 64x64
+
+# model.py: forward()
+e1 = self.enc1(x)          # (B, 128, 256, 256)  ← saved as skip1
+x_pool1 = self.pool1(e1)   # (B, 128, 128, 128)
+
+e2 = self.enc2(x_pool1)    # (B, 256, 128, 128)  ← saved as skip2
+x_pool2 = self.pool2(e2)   # (B, 256,  64,  64)  → into bottleneck
+```
+
+### What Is a ConvBlock2D?
+
+```python
+# model.py: ConvBlock2D
+class ConvBlock2D(nn.Module):
+    """Double convolution: Conv → BN → ReLU → Conv → BN → ReLU"""
+    def __init__(self, in_c, out_c, dropout=0.0):
+        super().__init__()
+        layers = [
+            nn.Conv2d(in_c, out_c, kernel_size=3, padding=1),
+            nn.BatchNorm2d(out_c),
+            nn.ReLU(inplace=True),
+            # Second conv refines the features learned by the first
+            nn.Conv2d(out_c, out_c, kernel_size=3, padding=1),
+            nn.BatchNorm2d(out_c),
+            nn.ReLU(inplace=True),
+        ]
+        if dropout > 0.0:
+            layers.append(nn.Dropout2d(p=dropout))  # Only used in decoders
+        self.conv = nn.Sequential(*layers)
+```
+
+Two sequential 3×3 convolutions are used instead of one 5×5 because:
+- Two 3×3 convolutions have the **same receptive field** as one 5×5 but with **33% fewer parameters**
+- They introduce an extra non-linearity (ReLU), allowing more complex pattern extraction
+- BatchNorm stabilizes training, preventing gradient vanishing/explosion with deep networks
+
+---
+
+## Stage 4 — Hybrid Bottleneck: Where CNN Meets Transformer
+
+### Part A: The CNN Bottleneck
+
+At 64×64 resolution, a final ConvBlock2D expands channels to 512. This creates a **highly compact, semantically rich** representation of the entire weather scene.
+
+```python
+self.bottleneck = ConvBlock2D(256, 512)  # (B, 512, 64, 64)
+```
+
+**Why 512 channels?** Each of the 512 channels can be thought of as a "detector" for a different atmospheric concept: Channel 1 might respond strongly to "low-pressure vortex signatures," Channel 2 to "strong vertical wind shear," Channel 200 to "high CAPE combined with dry air aloft," and so on. The model *learns* these concepts from data.
+
+**The Problem CNNs Can't Solve Here:** Even at 64×64, a CNN with a 3×3 kernel still only "looks" at a 3×3 neighborhood. To connect a feature at position (5, 10) [Arabian Sea] to a feature at position (55, 60) [Uttarkhand], the information must chain through many conv layers — and often dilutes or vanishes by the time it arrives.
+
+### Part B: Multi-Head Self-Attention (MHSA)
+
+This is the **crown jewel** of the architecture. The Transformer mechanism solves the long-range dependency problem in a single step.
+
+```python
+class SelfAttention(nn.Module):
+    def __init__(self, embed_dim=512, num_heads=8, spatial_size=64, dropout=0.1):
+        super().__init__()
+        self.norm = nn.LayerNorm(embed_dim)   # Pre-norm for training stability
+
+        # Standard PyTorch Multi-Head Attention
+        self.attn = nn.MultiheadAttention(
+            embed_dim=embed_dim,    # Each token is a 512-dim vector
+            num_heads=8,            # 8 "heads" look for different relationship types
+            dropout=dropout,        # Prevent over-reliance on any specific token pair
+            batch_first=True,       # (Batch, Sequence, Channels) format
+        )
+
+        # Learned positional encoding — tells the model WHERE each token is on the map
+        num_tokens = 64 * 64  # = 4096 tokens
+        self.pos_embed = nn.Parameter(
+            torch.randn(1, num_tokens, embed_dim) * 0.02
+        )
+
+        # Feed-Forward Network (standard Transformer block)
+        self.ffn = nn.Sequential(
+            nn.LayerNorm(embed_dim),
+            nn.Linear(embed_dim, embed_dim * 2),   # Expand (512 → 1024)
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(embed_dim * 2, embed_dim),   # Contract (1024 → 512)
+            nn.Dropout(dropout),
+        )
+```
+
+### The Attention Forward Pass — Step by Step
+
+```python
+def forward(self, x):
+    # x input: (B, 512ch, 64, 64)  — the CNN bottleneck output
+    B, C, H, W = x.shape
+
+    # ── STEP 1: Tokenization ─────────────────────────────────────────────
+    # The 64x64 spatial grid is "unrolled" into a sequence of 4096 tokens.
+    # Each token = one grid cell = a 512-dimensional feature vector.
+    # Think: Each grid cell (≈11km x 11km area) becomes a "word" in a sentence.
+    x_flat = x.flatten(2).transpose(1, 2)
+    #         (B, 512, 64, 64) → (B, 512, 4096) → (B, 4096, 512)
+    #          flatten H,W      transpose C,N      = (Batch, Tokens, Embed_dim)
+
+    # ── STEP 2: Add Positional Encoding ───────────────────────────────────
+    # Self-Attention is "permutation invariant" — without this, the model
+    # wouldn't know if token 0 is at top-left or bottom-right of India.
+    # The learned pos_embed injects geographic position into each token.
+    x_pos = x_flat + self.pos_embed[:, :H*W, :]
+
+    # ── STEP 3: Multi-Head Self-Attention ──────────────────────────────────
+    # Q (Query) = "What am I looking for?"
+    # K (Key)   = "What do I have to offer?"
+    # V (Value) = "The actual information I carry"
+    #
+    # All three come from the SAME input (x_norm) → "Self" Attention
+    # The model learns: "Whenever I see [Arabian Sea moisture + low pressure],
+    #   I should ATTEND TO [the orographic uplift region of Uttarkhand]"
+    x_norm = self.norm(x_pos)                          # Pre-layer norm
+    attn_out, _ = self.attn(x_norm, x_norm, x_norm)   # Q=K=V=x_norm
+    x_flat = x_flat + attn_out                         # Residual connection
+
+    # ── STEP 4: Feed-Forward Network ─────────────────────────────────────
+    # After attention mixes information across all 4096 tokens,
+    # the FFN processes each token independently to refine its representation.
+    x_flat = x_flat + self.ffn(x_flat)   # Another residual connection
+
+    # ── STEP 5: Reshape Back to 2D ────────────────────────────────────────
+    # The attention-enhanced tokens are reshaped back into a spatial map.
+    # The model has now "seen" every location from every other location.
+    out = x_flat.transpose(1, 2).reshape(B, C, H, W)
+    # (B, 4096, 512) → (B, 512, 4096) → (B, 512, 64, 64)
+
+    return out   # (B, 512, 64, 64) — same shape as input, now globally aware
+```
+
+### Why 8 Heads?
+
+The 8 attention heads are 8 **parallel, independent attention computations**, each learning a different type of long-range relationship:
+- Head 1 might learn to link **moisture sources** to **orographic uplift zones**
+- Head 2 might link **wind shear** to **convective initiation regions**
+- Head 4 might link **upstream pressure troughs** to **downstream precipitation**
+- Head 7 might focus on **river basin topology** for flash flood propagation
+
+Each head uses a 64-dimensional subspace (512 / 8 = 64 dims per head). Their results are concatenated, giving the model 8 simultaneous "perspectives" on atmospheric teleconnections.
+
+### The Attention Weight Matrix
+
+The heart of attention is the weight matrix **A**, computed as:
+
+```
+A = softmax( Q × K^T / √d_k )
+```
+
+For VARUNA's bottleneck:
+- **Q, K, V** are each `(B, 4096, 64)` per head
+- **Q × K^T** produces `(B, 4096, 4096)` — every token scored against every other
+- **Softmax** normalizes these to probabilities (where should I focus?)
+- The output is **V weighted by A** — the "aggregated message" from every other token
+
+This 4096×4096 attention matrix is what enables the **Arabian Sea → Himalayas** teleconnection to be learned directly in a single layer.
+
+---
+
+## Stage 5 — Three Independent Multi-Task Decoders
+
+### The Intuition: Three Expert Analysts, One Shared Briefing
+
+After the bottleneck produces a globally-aware representation, it's handed to **3 independent decoder "experts"**. Each decoder specializes in its own disaster type:
+
+- The **Cloudburst decoder** learns to look for rapid moisture accumulation over a small geographic area
+- The **Thunderstorm decoder** learns to detect atmospheric instability (high CAPE, wind shear) signatures
+- The **Flash Flood decoder** learns to combine terrain slope, upstream precipitation accumulation, and river basin geometry
+
+They all start from the **same globally-informed bottleneck** but diverge as they specialize.
+
+### The Skip Connection Mechanism
+
+```python
+# model.py: forward() — Thunderstorm head (others are identical in structure)
+
+# ── UP-SAMPLE 1: 64x64 → 128x128 ────────────────────────────────────────
+ts_u1 = self.ts_up1(b)
+#         ConvTranspose2d: (B, 512, 64, 64) → (B, 256, 128, 128)
+
+# ── SKIP CONNECTION: concat with encoder feature at same resolution ────────
+# This is the famous U-Net "skip connection" — restoring fine spatial detail.
+#
+# The upsampled feature ts_u1 has:    big-picture context (from bottleneck + attn)
+# The skip feature e2 has:           fine-grained local textures (from encoder)
+# Together they have BOTH.
+ts_d1 = self.ts_dec1(torch.cat([ts_u1, e2], dim=1))
+#                     (B, 256+256, 128, 128) → (B, 256, 128, 128)
+
+# ── UP-SAMPLE 2: 128x128 → 256x256 ──────────────────────────────────────
+ts_u2 = self.ts_up2(ts_d1)
+#         ConvTranspose2d: (B, 256, 128, 128) → (B, 128, 256, 256)
+
+# ── SKIP CONNECTION: concat with first encoder feature ────────────────────
+ts_d2 = self.ts_dec2(torch.cat([ts_u2, e1], dim=1))
+#                     (B, 128+128, 256, 256) → (B, 128, 256, 256)
+
+# ── FINAL 1x1 CONV: map to probability ───────────────────────────────────
+ts_pred = self.ts_out(ts_d2)
+#           Conv2d(128, 1, kernel_size=1): (B, 128, 256, 256) → (B, 1, 256, 256)
+#           Each pixel = raw logit (sigmoid → probability)
+```
+
+### Why Skip Connections Are Critical
+
+Without skip connections, the decoder only has the bottleneck's 64×64 representation to work from. To produce a sharp 256×256 prediction, it must "hallucinate" the fine-grained boundaries — and it fails. Specifically:
+- **District boundaries** between high and low risk would be blurry, spanning tens of km
+- **Orographic effects** at valley edges would be missed (rain shadow on the leeward side of a ridge)
+- **River corridor flood boundaries** would be inaccurate
+
+The skip connections act as a **"ground truth location reference"** — the decoder knows exactly where coastlines, mountain ridges, and river channels are because the encoder's early features still encode that crisp spatial information.
+
+---
+
+## Full Forward Pass: Everything Together
+
+```python
+# model.py: forward() — Complete data flow
+
+def forward(self, imdaa, insat, terrain):
+    # imdaa:   (B, 30, 6, 256, 256)
+    # insat:   (B,  4, 6, 256, 256)
+    # terrain: (B,  2,    256, 256)
+
+    # ── STAGE 1: Temporal Compression ─────────────────────────────────────
+    x_imdaa   = self.imdaa_time_compress(imdaa).squeeze(2)   # (B, 64, 256, 256)
+    x_insat   = self.insat_time_compress(insat).squeeze(2)    # (B, 32, 256, 256)
+    x_terrain = self.terrain_embed(terrain)                    # (B, 16, 256, 256)
+
+    # ── STAGE 2: Early Fusion ─────────────────────────────────────────────
+    x = torch.cat([x_imdaa, x_insat, x_terrain], dim=1)       # (B, 112, 256, 256)
+
+    # ── STAGE 3: Shared Encoder (save skip connections!) ──────────────────
+    e1     = self.enc1(x)        # (B, 128, 256, 256)  ← skip connection saved
+    e2     = self.enc2(self.pool1(e1))  # (B, 256, 128, 128)  ← skip connection saved
+    x_pool2 = self.pool2(e2)     # (B, 256, 64, 64)
+
+    # ── STAGE 4: Hybrid Bottleneck ────────────────────────────────────────
+    b = self.bottleneck(x_pool2) # (B, 512, 64, 64)  ← CNN compress
+    b = self.attention(b)        # (B, 512, 64, 64)  ← Transformer global context
+
+    # ── STAGE 5: Multi-Task Decoders ──────────────────────────────────────
+    # All three heads receive the SAME 'b' as input
+    # (but have INDEPENDENT weights → they specialize differently)
+    ts_pred = self._decode_ts(b, e1, e2)   # (B, 1, 256, 256) Thunderstorm
+    cb_pred = self._decode_cb(b, e1, e2)   # (B, 1, 256, 256) Cloudburst
+    ff_pred = self._decode_ff(b, e1, e2)   # (B, 1, 256, 256) Flash Flood
+
+    # Stack and return: [Cloudburst, Thunderstorm, FlashFlood]
+    return torch.cat([cb_pred, ts_pred, ff_pred], dim=1)  # (B, 3, 256, 256)
+```
+
+---
+
+## How Training Enforces Specialization
+
+Even though decoders share the bottleneck, specialization is enforced by the loss function:
+
+```python
+# train.py: DiceFocalLoss
+# Each decoder head is evaluated ONLY on its own ground truth label.
+# The gradient for Thunderstorm pixels ONLY flows through the TS head.
+# The CB head weights are NOT updated by TS loss, and vice versa.
+# → This is what causes the heads to diverge and specialize.
+
+class DiceFocalLoss(nn.Module):
+    """
+    Focal Loss addresses class imbalance: 
+    - Cloudbursts cover ~0.1% of pixels per map → standard BCE would 
+      learn to predict ALL ZEROS and still get 99.9% accuracy
+    - Focal loss DOWN-weights easy negatives, UP-weights hard positives:
+      Loss(p) = -(1-p)^gamma * log(p)
+      gamma=2 means a pixel predicted with p=0.9 contributes only 1% 
+      of the loss compared to a pixel with p=0.1 → the model is FORCED
+      to focus on rare cloudburst pixels
+    """
+```
+
+The combined **Dice + Focal Loss** solves two problems:
+- **Focal Loss** → Handles severe class imbalance (rare disaster events)
+- **Dice Loss** → Directly optimizes the shape and overlap of predicted risk regions
+
+---
+
+## Model Scale at a Glance
+
+| Component | Parameters | % of Total |
+|---|---|---|
+| 3D Temporal Compressors (IMDAA + INSAT) | ~2.4M | ~6% |
+| Terrain Embedding | ~0.3K | ~0% |
+| Shared U-Net Encoder (enc1 + enc2) | ~5.0M | ~13% |
+| CNN Bottleneck | ~2.4M | ~6% |
+| **Transformer Attention (MHSA + FFN)** | **~5.2M** | **~13%** |
+| 3× Multi-Task Decoder Heads | ~25M | ~62% |
+
+> The Transformer contributes only 13% of parameters but provides a **global receptive field** — the most computationally efficient way to add this capability to a CNN backbone.
+
+---
+
+## Why "Hybrid" Is Better Than Either Alone
+
+| Architecture | Temporal | Local Spatial | Global Context | Multi-Task |
+|---|---|---|---|---|
+| Pure CNN (U-Net) | ❌ (2D only) | ✅ | ❌ (local only) | ⚠️ (single head) |
+| Pure Transformer (ViT) | ❌ | ⚠️ (coarse) | ✅ | ⚠️ |
+| LSTM + CNN | ✅ (slow) | ✅ | ❌ | ⚠️ |
+| **VARUNA (Hybrid TransUNet)** | **✅ (3D Conv)** | **✅ (U-Net)** | **✅ (MHSA)** | **✅ (3 heads)** |
+
+VARUNA is specifically designed to have **no blind spots** across all four dimensions of severe weather nowcasting.
