@@ -20,8 +20,8 @@ async def trigger_geospatial_processing(background_tasks: BackgroundTasks):
     
     # We'll use cloudburst for precipitation simulation, and max of all for overall heatmap
     import numpy as np
-    overall_prob = np.maximum.reduce([preds["cloudburst"], preds["thunderstorm"], preds["flashFlood"]])
-    precip = preds["cloudburst"]
+    overall_prob = np.squeeze(np.maximum.reduce([preds["cloudburst"], preds["thunderstorm"], preds["flashFlood"]]))
+    precip = np.squeeze(preds["cloudburst"])
     
     # Offload to background
     background_tasks.add_task(geospatial_service.process_background, overall_prob, precip)
@@ -29,7 +29,7 @@ async def trigger_geospatial_processing(background_tasks: BackgroundTasks):
     return ProcessResponse(status="Processing", message="Geospatial batch job queued in background")
 
 @router.get("/heatmap")
-async def get_heatmap(time: str = "2h"):
+def get_heatmap(time: str = "2h"):
     """
     Returns the generated PNG overlay as a base64 string with bounds.
     """
@@ -45,13 +45,13 @@ async def get_heatmap(time: str = "2h"):
         
         preds = risk_service._run_inference()
         import numpy as np
-        overall_prob = np.maximum.reduce([preds["cloudburst"], preds["thunderstorm"], preds["flashFlood"]]) * scale
+        overall_prob = np.squeeze(np.maximum.reduce([preds["cloudburst"], preds["thunderstorm"], preds["flashFlood"]])) * scale
         geospatial_service.cached_heatmap[time] = geospatial_service.generate_risk_heatmap(overall_prob)
         
     return geospatial_service.cached_heatmap[time]
 
 @router.get("/trajectories")
-async def get_trajectories():
+def get_trajectories():
     """
     Retrieves the GeoJSON FeatureCollection of flood paths.
     """
