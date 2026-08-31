@@ -63,6 +63,15 @@ MIN_COLD_PIXELS = 1000
 MIN_WET_PIXELS = 1000
 MIN_SCENES = 5
 
+# Parallax is h * tan(zenith) with h the cloud top above the rain-producing
+# level. The tropical tropopause caps h near 18 km, so |slope| much beyond
+# that describes nothing physical. A fit whose own physics term is impossible
+# is not evidence about the georeferencing term either -- both come out of
+# the same regression -- so the gate returns INCONCLUSIVE rather than a
+# confident FAIL. Measured on the first real run: -41.3 km per unit
+# tan(zenith), which is not a cloud top at any sign convention.
+MAX_PLAUSIBLE_PARALLAX_KM = 30.0
+
 # Cut each scene into zenith bands and regress on the bands, not on
 # scene-mean tan(zenith).
 #
@@ -112,15 +121,36 @@ class SceneOffset:
     n_wet: int
     mean_tan_zenith: float
     sub_lon: float = 74.0
+    max_offset: int = 12
 
     @property
     def magnitude_px(self) -> float:
         return float(np.hypot(self.dy, self.dx))
 
     @property
+    def censored(self) -> bool:
+        """The argmax sits ON the search boundary, so the offset is a lower
+        bound, not a measurement.
+
+        This is not hypothetical. On the first real tiled run, 71% of tiles
+        that passed every other check were at |offset| = 12, and the
+        resulting fit gave a 60 km constant and a -70 km/unit parallax slope
+        where +12 was predicted -- a confident FAIL that would have blocked
+        all training data, produced entirely by censoring.
+
+        Widening the search from 12 to 24 dropped saturation from 79% to
+        52%; 24 to 36 changed nothing further, while the medians held. So
+        about half these tiles have a real bounded offset and half have no
+        interior maximum at all, and no search radius rescues the latter.
+        """
+        return (abs(self.dy) >= self.max_offset
+                or abs(self.dx) >= self.max_offset)
+
+    @property
     def identifiable(self) -> bool:
         return (self.zero > 0 and self.peak / max(self.zero, 1e-9) >= MIN_PEAK_RATIO
-                and self.n_cold >= MIN_COLD_PIXELS and self.n_wet >= MIN_WET_PIXELS)
+                and self.n_cold >= MIN_COLD_PIXELS and self.n_wet >= MIN_WET_PIXELS
+                and not self.censored)
 
 
 @dataclass
@@ -197,7 +227,7 @@ def measure_scene(tir_k, rain_mmhr, lat, lon, scene: str = "",
                        n_cold=int(cold.sum()), n_wet=int(wet.sum()),
                        mean_tan_zenith=float(np.nanmean(np.where(cold, tz, np.nan)))
                        if cold.any() else float("nan"),
-                       sub_lon=float(sub_lon))
+                       sub_lon=float(sub_lon), max_offset=int(max_offset))
 
 
 def measure_scene_tiled(tir_k, rain_mmhr, lat, lon, scene: str = "",
@@ -529,6 +559,22 @@ def run_gate_tiled(scene_tiles: dict, grid_km: float = 4.0) -> GateResult:
 
     ok = True
     mag = float(np.hypot(const_y, const_x))
+    if (np.isfinite(res.parallax_slope_km)
+            and abs(res.parallax_slope_km) > MAX_PLAUSIBLE_PARALLAX_KM):
+        res.verdict = "INCONCLUSIVE"
+        res.reasons.append(
+            f"{n_sc} scenes, {len(flat)} identifiable tiles.")
+        res.reasons.append(
+            f"parallax slope {res.parallax_slope_km:+.1f} km per unit "
+            f"tan(zenith) is not physical -- the tropical tropopause caps a "
+            f"cloud top near 18 km. The constant comes out of the SAME "
+            f"regression, so it carries no weight either. Not a FAIL: the "
+            f"decomposition does not describe the data.")
+        res.reasons.append(
+            f"scene-level scatter sd(u) = {scene_sd:.2f} px. Add scenes, and "
+            f"check how many tiles survive the censoring test -- a fit built "
+            f"from a handful of tiles is what produces slopes like this.")
+        return res
     res.reasons.append(
         f"{n_sc} scenes, {len(flat)} identifiable tiles. Constant estimated "
         f"from {n_sc} scene-level values (NOT {len(flat)} tiles): "
