@@ -1,0 +1,24 @@
+{
+  "_purpose": "RE-PULL: 46 of 47 granules on disk for 2015-12-02, 1 missing. The client's `counter += 1` runs twice on a token refresh and counter is the loop's stop condition, so each refresh ends the pull short. Files already present are skipped by the client, so re-running is cheap.",
+  "_expected_new_files": 1,
+  "_before_running": "raise timeout=5 to 60 on mdapi.py line 545 first -- it is a PER-READ timeout on a streamed 448 MB body, so the re-pull also re-measures throughput honestly",
+  "user_credentials": {
+    "username": "",
+    "password": ""
+  },
+  "search_parameters": {
+    "datasetId": "3DIMG_L1B_STD",
+    "startTime": "2015-12-02",
+    "endTime": "2015-12-02",
+    "count": "",
+    "boundingBox": "62.3,5.8,101.7,39.5",
+    "gId": ""
+  },
+  "download_settings": {
+    "download_path": "data/insat",
+    "organize_by_date": true,
+    "skip_user_prompt": false,
+    "generate_error_log": true,
+    "error_log_path": "data/insat/logs"
+  }
+}

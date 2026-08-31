@@ -556,3 +556,57 @@ cap and its value is not in the client**; it comes back in the 429 body.
 360 GB at 7.9 MB/s is 13 hours of transfer, but at N files/day the schedule
 could be far longer, and 19,200 files is a lot of files. Watch for the first
 `daily_limit` message and read the number out of it.
+
+
+## 15. The alignment gate cannot separate parallax from latitude, structurally
+
+Over India from 74E, **`corr(tan(zenith), latitude) = +0.948`** across the
+measured tiles. The two regressors are nearly collinear, so any effect that
+varies with latitude is indistinguishable from parallax.
+
+Measured on the three cellular scenes:
+
+| regressor | slope | r |
+|---|---|---|
+| tan(zenith) | -10.88 px/unit | -0.540 |
+| latitude | -0.41 px/deg | -0.663 |
+| **\|lon - 74\|** | -0.07 px/deg | **-0.087** |
+
+`|lon - 74|` is the part of zenith variation that is *independent* of
+latitude, and it shows nothing. Latitude alone gives R^2 = 0.440; adding
+tan(zenith) buys +0.079 and flips the coefficient's sign -- the signature of
+collinearity, not of a second effect. **The -41 km "parallax slope" is a
+latitude effect, not parallax**, which is why it was unphysical.
+
+This is the same class as LIMITATIONS 9's between-scene finding, one level
+deeper: not a data shortage, a design limit. More scenes from 3DR will not
+fix it at any count.
+
+**What would fix it:** 3DS scans at 82E paired with 3DR at 74E over the same
+scenes. The same ground cell has a different zenith angle from the two
+satellites, so the contrast is within-location and breaks the latitude-zenith
+collinearity entirely.
+
+### Why ~2/3 of tiles are unusable, and what it is NOT
+
+Three hypotheses tested and all three refuted:
+
+* **Not within-tile texture.** Usable tiles have FEWER cold pixels (median
+  3,936 vs 7,110) and LESS heavy rain (0.79% vs 2.38%). Every correlation
+  with identifiability is negative. More convection makes a tile harder.
+* **Not displacement beyond the search window.** Widening from 12 to 24 px
+  dropped censoring 79% -> 52%; 24 to 36 changed nothing further.
+* **Not tile size.** 128 px is optimal at 33% usable; 192/256 give 25%, 320
+  gives 0%, and going smaller is also worse (96 px 27%, 64 px 19%, 48 px 15%).
+
+A fourth, mine, also refuted: **not the matching statistic.** Normalised
+cross-correlation of the continuous fields gives a median peak/zero of 1.242
+against IoU's 1.230, and clears the 1.15 bar on 61% of tiles against 64%.
+
+What the data shows: 64% of tiles pass the ratio test and only 33% survive
+censoring, so half the tiles that have a peak have it at the boundary, and no
+search radius brings it inside. Those surfaces are monotonic -- overlap
+increases all the way to the edge of the window because the tile sits at the
+margin of a rain area. **There is no local cloud-to-rain correspondence to
+find in them.** That is a property of the matching problem, not a defect to
+fix.
