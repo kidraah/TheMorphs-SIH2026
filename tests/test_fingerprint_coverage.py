@@ -133,3 +133,42 @@ def test_grid_fields_actually_change_the_grid():
     b = india_area(shape=(456, 432), resolution_m=8000.0)
     assert a.shape != b.shape
     assert india_area(lon_0=74.0).proj_dict["lon_0"] == 74.0
+
+
+def test_migration_preserves_values_through_the_finite_mask(tmp_path):
+    """A fingerprint changed mid-ingest after raw files were already deleted.
+    Migration is possible only because the stored arrays carry their own
+    `finite` mask, so the values survive independently of how NaN happened to
+    be encoded -- the old writer used 0.0, the new one -999.0."""
+    import numpy as np
+    from nowcast_train.insat_cache import InsatCacheConfig
+
+    cfg = InsatCacheConfig()
+    data = np.full((len(cfg.channels), 4, 4), 250.0, dtype=np.float32)
+    finite = np.ones_like(data, dtype=bool)
+    finite[0, 0, 0] = False
+    data[0, 0, 0] = 0.0                      # the OLD nan encoding
+    rebuilt = {c: np.where(finite[i], data[i].astype(np.float64), np.nan)
+               for i, c in enumerate(cfg.channels)}
+    out = insat_ingest._write_cache_entry(tmp_path, cfg, rebuilt, sub_lon=74.0,
+                                          checks_passed=True, meta={})
+    with np.load(out) as z:
+        assert not z["finite"][0, 0, 0]
+        assert z["data"][0, 0, 0] == insat_ingest.NAN_FILL_K
+        assert z["data"][0, 1, 1] == 250.0, "real values are untouched"
+
+
+def test_migrated_entries_are_distinguishable_from_ingested_ones():
+    """`reader` records which decode path ran and is not recoverable from a
+    cached array. Recording it as 'migrated' rather than guessing lets a later
+    audit tell the two apart."""
+    import importlib.util
+    from pathlib import Path
+    spec = importlib.util.spec_from_file_location(
+        "migrate_cache", Path(__file__).parent.parent / "scripts" / "migrate_cache.py")
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    got = m.meta_from_stem("3RIMG_26JUN2024_0015_L1B_STD_V01R00")
+    assert got["satellite"] == "INSAT-3DR"
+    assert got["scan_time_utc"].startswith("2024-06-26T00:15")
+    assert got["reader"] == "migrated"
