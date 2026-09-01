@@ -38,6 +38,11 @@ def main():
     ap.add_argument("--cache", default="",
                     help="path to a pre-decoded cache dir; 5x faster than raw HDF5")
     ap.add_argument("--no-resume", action="store_true")
+    ap.add_argument("--wandb-project", default="",
+                    help="empty disables W&B entirely")
+    ap.add_argument("--wandb-run", default="")
+    ap.add_argument("--amp", action="store_true",
+                    help="mixed precision; on CUDA this is most of the speed")
     ap.add_argument("--smoke", action="store_true",
                     help="tiny subset + tiny model, to prove the wiring")
     args = ap.parse_args()
@@ -114,6 +119,9 @@ def main():
                       run_dir=Path(args.run_dir), device=args.device,
                       num_workers=args.workers,
                       notes=notes, head_provenance=provenance,
+                      amp=args.amp,
+                      wandb_project=args.wandb_project,
+                      wandb_run=args.wandb_run,
                       n_boot=100 if args.smoke else 500),
           lead_minutes=loader.cfg.lead_minutes,
           val_groups=episode_ids(va_days),

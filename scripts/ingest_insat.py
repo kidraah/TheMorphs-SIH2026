@@ -28,11 +28,14 @@ def main():
                     help="stop the whole run on the first such granule "
                          "(--strict-scan only fails that granule and continues)")
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--workers", type=int, default=1,
+                    help="parallel processes; 8 is the tested setting")
     a = ap.parse_args()
 
     from nowcast_data.paths import cache_dir, report as paths_report
     from nowcast_train.insat_cache import InsatCacheConfig
-    from nowcast_train.insat_ingest import CacheRootConflict, check_cache_root, ingest_all
+    from nowcast_train.insat_ingest import (CacheRootConflict, check_cache_root,
+                                            ingest_all, ingest_all_parallel)
 
     cfg = InsatCacheConfig()
     root = a.cache or str(cache_dir())
@@ -55,10 +58,11 @@ def main():
         print("nothing to do")
         return 0
 
-    led = ingest_all(paths, cfg, root, a.ledger,
+    runner = ingest_all_parallel if a.workers > 1 else ingest_all
+    kw = {"workers": a.workers} if a.workers > 1 else {"halt_on_scan": a.halt_on_scan}
+    led = runner(paths, cfg, root, a.ledger,
                      delete_raw=(not a.keep_raw and not a.dry_run),
-                     strict_scan=a.strict_scan, write=not a.dry_run,
-                     halt_on_scan=a.halt_on_scan)
+                 strict_scan=a.strict_scan, write=not a.dry_run, **kw)
     print()
     print(led.report())
     seen = {}

@@ -50,6 +50,46 @@ def save_checkpoint(path, *, model, optimizer, epoch: int, best_score: float,
     return path
 
 
+def _load_model_state(model, state) -> None:
+    """Load weights, and say WHAT changed when they do not fit.
+
+    strict=True is right -- silently skipping missing keys would resume a
+    run against a different architecture and report it as a continuation.
+    But the raw failure is a wall of parameter names. Cross-attention added
+    5.91M parameters to a 32.5M model, so every checkpoint written before it
+    is unloadable, and the operator needs to be told that in one line rather
+    than deduce it from 400 missing keys.
+    """
+    try:
+        model.load_state_dict(state["model"])
+        return
+    except RuntimeError as e:
+        have = set(state["model"])
+        want = set(model.state_dict())
+        missing, unexpected = sorted(want - have), sorted(have - want)
+        n_ckpt = sum(v.numel() for v in state["model"].values())
+        n_model = sum(p.numel() for p in model.parameters())
+
+        def families(keys):
+            out = {}
+            for k in keys:
+                out[k.split(".")[0]] = out.get(k.split(".")[0], 0) + 1
+            return ", ".join(f"{k} x{v}" for k, v in sorted(out.items())[:6])
+
+        raise RuntimeError(
+            f"this checkpoint was written for a DIFFERENT architecture.\n"
+            f"  checkpoint: {n_ckpt/1e6:.2f} M parameters\n"
+            f"  this model: {n_model/1e6:.2f} M parameters\n"
+            f"  in the model but not the checkpoint ({len(missing)}): "
+            f"{families(missing) or 'none'}\n"
+            f"  in the checkpoint but not the model ({len(unexpected)}): "
+            f"{families(unexpected) or 'none'}\n"
+            f"  config recorded with the checkpoint: {state.get('config')}\n"
+            f"Pre-training must be re-run; a checkpoint from before the "
+            f"architecture changed is not a warm start for it."
+        ) from e
+
+
 def load_checkpoint(path, *, model, optimizer=None, scheduler=None, scaler=None,
                     map_location="cpu", restore_rng: bool = True) -> dict:
     """Restore in place. Returns the metadata (epoch, best_score, config)."""
@@ -58,7 +98,7 @@ def load_checkpoint(path, *, model, optimizer=None, scheduler=None, scaler=None,
         raise FileNotFoundError(f"no checkpoint at {path}")
     state = torch.load(path, map_location=map_location, weights_only=False)
 
-    model.load_state_dict(state["model"])
+    _load_model_state(model, state)
     if optimizer is not None and state.get("optimizer") is not None:
         optimizer.load_state_dict(state["optimizer"])
     if scheduler is not None and state.get("scheduler") is not None:

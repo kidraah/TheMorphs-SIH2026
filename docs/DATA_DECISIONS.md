@@ -161,3 +161,43 @@ producing confident wrong warning times.
 
 Both are downloaded (all eight tile groups), and the flow-direction
 convention is verified against `upa` — see LIMITATIONS #8.
+
+
+## The flash-flood output is ROUTED, not learned. It has no labels by design.
+
+Recorded because it was briefly mis-reported as a gap ("the flood head has no
+supervision"), which reads as an omission when it is the decision.
+
+**The model has three heads and none of them is flash flood:**
+
+    rain_rate      grid    supervised by IMERG
+    extreme_rain   grid    supervised by IMERG per-cell-per-month 99.9th pct
+    cloudburst     point   supervised by IMD AWS/ARG station reports
+
+**The API has three hazards, which is a different list:**
+
+    thunderstorm   <- extreme_rain
+    cloudburst     <- cloudburst
+    flash_flood    <- FloodRouter.route(rain_rate), NOT a head
+
+Reading the API's hazard list as the model's head list is what produced the
+phantom gap.
+
+**Why flood is not learned.** India has no gridded flash-flood truth. There
+is no national inundation product to supervise against, CWC gauge records are
+point discharge at a few hundred sites with reporting lags, and the events
+that matter are rare enough that a learned head would be fitting a handful of
+cases. A physical route from predicted rain -- SCS-CN runoff, D8 accumulation
+to sub-basins, Kirpich timing, HAND exposure -- is defensible from first
+principles and checkable against a hydrologist's spreadsheet, which a learned
+head trained on ~10 gauged events would not be.
+
+**What this means for the evaluation.** The flood output is still SCORED, on
+basin geometry with area weighting (EvalConfig geometry="basin"). It is
+scored against observed flood reports where those exist, not against a
+gridded label field, and the scoring unit is the sub-basin because that is
+what the routing produces.
+
+**The one thing that IS missing** is wiring, not labelling: nothing yet feeds
+the model's `rain_rate` output into `FloodRouter.route()`. That is a small
+connection in the inference path, not a data problem.

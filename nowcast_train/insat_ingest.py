@@ -329,6 +329,69 @@ def dedupe_by_stem(paths, log=print) -> list:
     return out
 
 
+def _worker(args):
+    """Top-level so it is picklable for a process pool."""
+    path, cfg, cache_root, delete_raw, strict_scan, write = args
+    return str(path), ingest_one(path, cfg, cache_root, delete_raw,
+                                 strict_scan, write)
+
+
+def ingest_all_parallel(paths, cfg: InsatCacheConfig, cache_root, ledger_path,
+                        workers: int = 8, delete_raw: bool = True,
+                        strict_scan: bool = False, write: bool = True,
+                        log=print, log_every: int = 50) -> IngestLedger:
+    """Ingest across processes. Embarrassingly parallel: one granule in, one
+    npz out, no shared state.
+
+    PROCESSES, not threads: the decode is numpy and h5py under the GIL, and
+    the resample is pykdtree. Threads would serialise on exactly the part
+    that costs the 5.6 s.
+
+    No torch anywhere in this path -- asserted by
+    test_the_ingest_side_never_needs_torch -- so the OpenMP conflict that
+    forced the exec'd boundary in nowcast_serve does not arise here, and a
+    plain pool is safe.
+
+    SAFE TO RUN WHILE THE DOWNLOAD IS STILL GOING. The client writes to
+    "<name>.part" and renames on completion, so a "*.h5" glob only ever sees
+    finished files; there is no window where a half-written file is visible
+    under its final name. The ingest simply processes what exists when it
+    starts, and a second pass picks up whatever landed since -- which the
+    on-disk skip check now makes cheap.
+    """
+    import concurrent.futures as cf
+    import multiprocessing as mp
+
+    check_cache_root(cache_root, cfg)
+    paths = dedupe_by_stem(paths, log)
+    ledger = IngestLedger(ledger_path)
+    out_dir = Path(cache_root) / cfg.fingerprint()
+    on_disk = {p.stem for p in iter_data_files(out_dir, "*.npz")}
+    todo = [p for p in paths
+            if Path(p).stem not in on_disk and not ledger.done(str(p))]
+    log(f"{len(paths)} granules, {len(todo)} to ingest "
+        f"({len(paths) - len(todo)} already cached), {workers} workers")
+    if not todo:
+        return ledger
+
+    jobs = [(p, cfg, cache_root, delete_raw, strict_scan, write) for p in todo]
+    ctx = mp.get_context("spawn")
+    done = 0
+    t0 = time.perf_counter()
+    with cf.ProcessPoolExecutor(max_workers=workers, mp_context=ctx) as ex:
+        for path, res in ex.map(_worker, jobs, chunksize=1):
+            ledger.record(path, res)
+            done += 1
+            if res.state != "cached":
+                log(f"  {Path(path).name}: {res.state} -- {res.error[:80]}")
+            if done % log_every == 0 or done == len(todo):
+                el = time.perf_counter() - t0
+                log(f"  [{done}/{len(todo)}] {el/done:.2f} s/granule wall, "
+                    f"eta {(len(todo)-done)*el/done/60:.0f} min")
+    ledger.save()
+    return ledger
+
+
 def ingest_all(paths, cfg: InsatCacheConfig, cache_root, ledger_path,
                delete_raw: bool = True, strict_scan: bool = False,
                write: bool = True, halt_on_scan: bool = False,
