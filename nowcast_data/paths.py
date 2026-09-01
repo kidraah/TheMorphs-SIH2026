@@ -95,3 +95,41 @@ def report() -> str:
     for w in c["warnings"]:
         lines.append(f"  !! {w}")
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# File walking. Every site must go through this.
+# ---------------------------------------------------------------------------
+#
+# macOS writes an AppleDouble sidecar "._name" beside every file on a
+# non-HFS volume, and an unfiltered walk counts them as data. Three separate
+# incidents from this one cause:
+#
+#   1. "352 npz" reported for a directory holding 176
+#   2. a migration failure counter reading 176/176, because every sidecar
+#      failed to parse as an npz
+#   3. the cache-root guard reporting 1,562 files for 781, exactly 2x --
+#      and a guard that reports double the truth is one you start
+#      discounting, which is worse than a guard that is merely absent
+#
+# Fixed here rather than at each call site, because "remember to filter" is
+# the class of instruction this project has repeatedly failed to keep.
+
+def is_sidecar(p) -> bool:
+    """macOS AppleDouble resource fork, not data."""
+    return Path(p).name.startswith("._")
+
+
+def iter_data_files(root, pattern: str = "*", recursive: bool = True):
+    """Every real file under `root` matching `pattern`, sidecars excluded."""
+    root = Path(root)
+    if not root.exists():
+        return
+    it = root.rglob(pattern) if recursive else root.glob(pattern)
+    for p in it:
+        if p.is_file() and not is_sidecar(p):
+            yield p
+
+
+def count_data_files(root, pattern: str = "*") -> int:
+    return sum(1 for _ in iter_data_files(root, pattern))

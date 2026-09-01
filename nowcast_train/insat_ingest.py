@@ -36,6 +36,7 @@ from pathlib import Path
 import numpy as np
 
 from nowcast_data.grids import india_area
+from nowcast_data.paths import count_data_files, iter_data_files
 
 from .insat_cache import InsatCacheConfig
 
@@ -68,7 +69,7 @@ def check_cache_root(root, cfg: InsatCacheConfig) -> dict:
     if root.exists():
         for d in root.iterdir():
             if d.is_dir() and d.name != want and len(d.name) == 16:
-                n = sum(1 for _ in d.rglob("*.npz"))
+                n = count_data_files(d, "*.npz")
                 if n:
                     siblings.append((d.name, n))
     if siblings:
@@ -335,7 +336,17 @@ def ingest_all(paths, cfg: InsatCacheConfig, cache_root, ledger_path,
     check_cache_root(cache_root, cfg)
     paths = dedupe_by_stem(paths, log)
     ledger = IngestLedger(ledger_path)
-    todo = [p for p in paths if not ledger.done(str(p))]
+    out_dir = Path(cache_root) / cfg.fingerprint()
+    # Skip on what is ON DISK, not on the ledger. The ledger keys on the RAW
+    # path, and after a migration the raw copy that produced an entry has
+    # been deleted while a duplicate survives at a different path in another
+    # tree -- so ledger.done() said False for 781 already-cached granules and
+    # reported "0 already cached". Harmless at 518; on the 19,200-granule
+    # archive that is hours of redundant decode and a much larger window for
+    # a mid-run failure.
+    on_disk = {p.stem for p in iter_data_files(out_dir, "*.npz")}
+    todo = [p for p in paths
+            if Path(p).stem not in on_disk and not ledger.done(str(p))]
     log(f"{len(paths)} granules, {len(todo)} to ingest "
         f"({len(paths) - len(todo)} already cached)")
     log(f"cache -> {Path(cache_root) / cfg.fingerprint()}")

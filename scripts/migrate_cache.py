@@ -86,11 +86,8 @@ def main():
         print(f"[ERROR] no such fingerprint directory: {src}")
         return 2
 
-    # Skip macOS AppleDouble sidecars. The external volume creates a "._x"
-    # for every file, and an unfiltered glob reports 352 entries where there
-    # are 176 -- which also made the failure counter read 176/176.
-    files = sorted(f for f in src.glob("*.npz")
-                   if not f.name.startswith("._"))
+    from nowcast_data.paths import iter_data_files
+    files = sorted(iter_data_files(src, "*.npz", recursive=False))
     print(f"migrating {len(files)} entries")
     print(f"  from {src.name}")
     print(f"  to   {dst.name}")

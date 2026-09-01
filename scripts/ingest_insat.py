@@ -36,12 +36,9 @@ def main():
 
     cfg = InsatCacheConfig()
     root = a.cache or str(cache_dir())
-    paths = []
-    for src in a.src:
-        paths += [p for p in glob.glob(os.path.join(src, "**", "*.h5"),
-                                       recursive=True)
-                  if not os.path.basename(p).startswith("._")]
-    paths = sorted(set(paths))
+    from nowcast_data.paths import iter_data_files
+    paths = sorted({str(p) for src in a.src
+                    for p in iter_data_files(src, "*.h5")})
     if a.limit:
         paths = paths[:a.limit]
 
