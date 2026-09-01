@@ -21,6 +21,7 @@ export const useAppStore = create((set, get) => ({
   districtRiskData: [],
   geoHeatmap: null,
   geoTrajectories: null,
+  radarImage: null,
 
   fetchDashboardData: async (timeRange) => {
     set({ isDataLoading: true });
@@ -34,7 +35,8 @@ export const useAppStore = create((set, get) => ({
         performance,
         districts,
         heatmap,
-        trajectories
+        trajectories,
+        radar
       ] = await Promise.all([
         earlyWarningApi.getRiskSummary(timeRange),
         earlyWarningApi.getRiskTimeline(),
@@ -44,7 +46,8 @@ export const useAppStore = create((set, get) => ({
         earlyWarningApi.getSystemPerformance(),
         earlyWarningApi.getDistrictRiskData(timeRange),
         earlyWarningApi.getGeoHeatmap(timeRange),
-        earlyWarningApi.getGeoTrajectories()
+        earlyWarningApi.getGeoTrajectories(),
+        earlyWarningApi.getRadarImage(timeRange)
       ]);
 
       set({
@@ -57,6 +60,7 @@ export const useAppStore = create((set, get) => ({
         districtRiskData: districts,
         geoHeatmap: heatmap,
         geoTrajectories: trajectories,
+        radarImage: radar,
         isDataLoading: false
       });
     } catch (error) {

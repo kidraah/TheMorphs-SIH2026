@@ -39,9 +39,12 @@ class RiskService:
         elif time_range == "4h": scale = 1.0
         elif time_range == "6h": scale = 0.5
         
-        cb_max = float(preds["cloudburst"].max() * 100) * scale
-        ts_max = float(preds["thunderstorm"].max() * 100) * scale
-        ff_max = float(preds["flashFlood"].max() * 100) * scale
+        # Apply confidence scaler to reflect true model efficiency
+        efficiency_scaler = 0.75
+        
+        cb_max = float(preds["cloudburst"].max() * 100) * scale * efficiency_scaler
+        ts_max = float(preds["thunderstorm"].max() * 100) * scale * efficiency_scaler
+        ff_max = float(preds["flashFlood"].max() * 100) * scale * efficiency_scaler
         return cb_max, ts_max, ff_max
 
     def get_level(self, prob):
@@ -201,9 +204,12 @@ class RiskService:
         elif time_range == "4h": scale = 1.0
         elif time_range == "6h": scale = 0.5
         
-        cb_array = np.squeeze(preds["cloudburst"]) * scale * 100
-        ts_array = np.squeeze(preds["thunderstorm"]) * scale * 100
-        ff_array = np.squeeze(preds["flashFlood"]) * scale * 100
+        # Apply confidence scaler to reflect true model efficiency
+        efficiency_scaler = 0.75
+        
+        cb_array = np.squeeze(preds["cloudburst"]) * scale * efficiency_scaler * 100
+        ts_array = np.squeeze(preds["thunderstorm"]) * scale * efficiency_scaler * 100
+        ff_array = np.squeeze(preds["flashFlood"]) * scale * efficiency_scaler * 100
         
         import os
         import geopandas as gpd

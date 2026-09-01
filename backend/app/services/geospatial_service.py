@@ -60,6 +60,37 @@ class GeospatialService:
             "opacity": 0.6
         }
 
+    def generate_radar_image(self, precip_array):
+        """
+        Converts the cloudburst array into a stylized precipitation radar PNG.
+        """
+        from scipy.ndimage import gaussian_filter
+        smoothed = gaussian_filter(precip_array, sigma=1.0)
+        
+        # Scale to max ~150mm/hr (based on model max prediction)
+        precip_mm = smoothed * 150.0 
+        
+        # Mask out very low precipitation (< 5mm) to show background
+        masked_array = np.ma.masked_where(precip_mm < 5, precip_mm)
+        
+        fig, ax = plt.subplots(figsize=(4, 2.5), frameon=False)
+        
+        # We can use nipy_spectral or turbo to simulate radar
+        cmap = matplotlib.colormaps.get_cmap('turbo').copy()
+        cmap.set_bad(color='#0F284E', alpha=1) # Match the exact dark blue background from frontend
+        
+        ax.imshow(masked_array, cmap=cmap, vmin=0, vmax=150, alpha=0.9, aspect='auto')
+        ax.set_axis_off()
+        fig.tight_layout(pad=0)
+        
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', bbox_inches='tight', pad_inches=0, transparent=False, facecolor='#0F284E')
+        plt.close(fig)
+        
+        buf.seek(0)
+        b64_img = base64.b64encode(buf.read()).decode('utf-8')
+        return f"data:image/png;base64,{b64_img}"
+
     def _generate_mock_dem(self, height, width):
         """Simulate a terrain mesh with some hills and valleys."""
         x = np.linspace(0, 10 * np.pi, width)

@@ -58,6 +58,14 @@ export const earlyWarningApi = {
     }
   },
 
+  getRadarImage: async (timeRange = '2h') => {
+    try {
+      return (await apiClient.get('/api/geo/radar', { params: { time: timeRange } })).data;
+    } catch {
+      return null;
+    }
+  },
+
   getGeoTrajectories: async () => {
     try {
       return (await apiClient.get('/api/geo/trajectories')).data;

@@ -50,6 +50,25 @@ def get_heatmap(time: str = "2h"):
         
     return geospatial_service.cached_heatmap[time]
 
+@router.get("/radar")
+def get_radar_nowcast(time: str = "2h"):
+    """
+    Returns a radar-styled precipitation heatmap base64 image.
+    """
+    preds = risk_service._run_inference()
+    
+    scale = 1.0
+    if time == "now": scale = 0.4
+    elif time == "2h": scale = 0.7
+    elif time == "4h": scale = 1.0
+    elif time == "6h": scale = 0.5
+    
+    # Use cloudburst tensor and apply efficiency scaler to match others
+    import numpy as np
+    cb_prob = np.squeeze(preds["cloudburst"]) * 0.75 * scale
+    
+    return geospatial_service.generate_radar_image(cb_prob)
+
 @router.get("/trajectories")
 def get_trajectories():
     """
